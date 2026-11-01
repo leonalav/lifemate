@@ -1,0 +1,40 @@
+# LifeMate — runtime dependencies
+#
+# Deliberately NOT pinned here:
+#   torch, torchvision, tensorflow, jax
+# Colab already ships a working CUDA build of torch; reinstalling it is slow and
+# frequently breaks the runtime. The Docker image is built FROM a pinned base image
+# that provides torch, and installs only the packages below on top.
+#
+# Colab-provided packages that are used but intentionally left unpinned:
+#   torch, numpy, pandas
+#
+# Versions below are lower bounds that the code was written against. The Colab cell that
+# installs these reports whether a core package (e.g. numpy) changed and, if so, asks
+# for a runtime restart.
+
+# --- inference server ---
+vllm>=0.6.0
+
+# --- speech recognition (gipformer ONNX, CPU) ---
+sherpa-onnx>=1.10.0
+numpy>=1.24
+
+# --- training ---
+transformers>=4.45.0
+peft>=0.12.0
+trl>=0.9.0
+datasets>=2.20.0
+accelerate>=0.33.0
+sentencepiece>=0.2.0
+bitsandbytes>=0.43.0        # 4-bit / 8-bit quantisation for QLoRA
+huggingface-hub>=0.25.0
+safetensors>=0.4.0
+
+# --- language / date handling (deterministic helpers) ---
+regex>=2024.5.0
+python-dateutil>=2.9.0
+
+# --- notebook tooling and tests ---
+nbformat>=5.10.0
+pytest>=8.0.0

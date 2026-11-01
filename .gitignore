@@ -1,0 +1,48 @@
+# --- data (never commit the competition dataset) ---
+data/
+datasets/
+*.zip
+!docs/**/*.png
+
+# --- model weights and checkpoints ---
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.int8.onnx
+models/
+checkpoints/
+runs/
+outputs/
+wandb/
+logs/
+*.log
+
+# --- secrets ---
+.env
+.env.*
+*.key
+*.pem
+secrets.yaml
+credentials.json
+hf_token
+wandb_api_key
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

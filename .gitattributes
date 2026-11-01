@@ -1,0 +1,19 @@
+# Normalise line endings in the repository.
+* text=auto eol=lf
+
+# Notebooks and JSON must stay LF so nbformat and JSON parsing are stable.
+*.ipynb text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.wav binary
+*.onnx binary
+*.safetensors binary
