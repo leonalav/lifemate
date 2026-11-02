@@ -48,7 +48,6 @@ class Recognizer:
             decoder=str(self.model_dir / "decoder.onnx"),
             joiner=str(self.model_dir / "joiner.onnx"),
             num_threads=num_threads,
-            use_itn=True,
         )
 
     @staticmethod
@@ -81,7 +80,7 @@ class Recognizer:
 
         audio = sherpa_onnx.read_wave(str(wav_path))
         stream = self._recognizer.create_stream()
-        stream.accept_waveform(audio.samples, audio.sample_rate)
+        stream.accept_waveform(audio.sample_rate, audio.samples)
         self._recognizer.decode_stream(stream)
         return stream.result.text
 

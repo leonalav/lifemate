@@ -390,9 +390,13 @@ def transcribe_split(split_name):
         "--asr-model-dir", ASR_MODEL_DIR,
     ]
     print(" ".join(cmd))
-    result = subprocess.run(cmd, cwd=REPO_DIR)
+    result = subprocess.run(cmd, cwd=REPO_DIR, capture_output=True, text=True)
+    print(result.stdout[-4000:] if result.stdout else "(no stdout)")
     if result.returncode != 0:
+        print(result.stderr[-8000:] if result.stderr else "(no stderr)")
         raise RuntimeError(f"transcribe failed for {split_name} ({result.returncode})")
+    if result.stderr:
+        print("(stderr tail:)", result.stderr[-2000:])
     with open(out, encoding="utf-8") as fh:
         rows = [json.loads(line) for line in fh if line.strip()]
     print(f"  {split_name}: {len(rows)} utterances -> {out}")
