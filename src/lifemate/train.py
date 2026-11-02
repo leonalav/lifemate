@@ -314,23 +314,35 @@ def build_model_and_trainer(config: TrainConfig, train_rows: list[dict],
     train_dataset = Dataset.from_list([to_text(r) for r in train_rows])
     eval_dataset = Dataset.from_list([to_text(r) for r in eval_rows]) if eval_rows else None
 
+    # T4 (compute capability 7.5) has no bf16 support; fall back to fp16 there so
+    # the smoke test and the full run work on the cheapest Colab GPU. Ampere and
+    # newer keep the configured bf16 setting.
+    use_bf16 = bool(config.bf16)
+    use_fp16 = False
+    try:
+        if torch.cuda.is_available():
+            major, _ = torch.cuda.get_device_capability(0)
+            if major < 8 and use_bf16:
+                use_bf16 = False
+                use_fp16 = True
+    except Exception:
+        pass
+
     training_args = SFTConfig(
         output_dir=str(output_dir),
-        num_train_epochs=config.num_train_epochs,
+        num_train_epochs=1,  # the caller loops per epoch to save last/best
         per_device_train_batch_size=config.per_device_train_batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         learning_rate=config.learning_rate,
-        max_seq_len=config.max_seq_len,
-        lora_r=config.lora_r,
-        lora_alpha=config.lora_alpha,
-        lora_dropout=config.lora_dropout,
+        max_length=config.max_seq_len,
         warmup_ratio=config.warmup_ratio,
         weight_decay=config.weight_decay,
         lr_scheduler_type=config.lr_scheduler_type,
         logging_steps=config.logging_steps,
         save_total_limit=config.save_total_limit,
         seed=config.seed,
-        bf16=config.bf16,
+        bf16=use_bf16,
+        fp16=use_fp16,
         gradient_checkpointing=config.gradient_checkpointing,
         report_to=[],
     )
@@ -341,14 +353,8 @@ def build_model_and_trainer(config: TrainConfig, train_rows: list[dict],
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
         args=training_args,
-        peft_config=lora,
     )
 
-    if resume_from:
-        # Restores model, optimizer, scheduler and epoch.
-        trainer.train(resume_from_checkpoint=str(resume_from))
-    else:
-        trainer.train()
     return trainer, tokenizer
 
 
