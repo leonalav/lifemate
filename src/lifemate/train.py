@@ -21,6 +21,7 @@ import random
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .casing import set_mode as set_case_mode
 from .data import resolve_split
 from .training_data import build_examples, write_jsonl
 
@@ -57,6 +58,11 @@ class TrainConfig:
     # transcripts
     transcript_source: str = "gold"  # gold | asr | mix
     asr_transcript_ratio: float = 0.5
+    # The casing policy the transcript reaches the model in. "none" (lowercase) is
+    # the shipped pipeline: the model casts the arguments itself (Decision 24).
+    case_mode: str = "none"
+    # A JSONL cache of raw ASR transcripts, keyed by the split-relative audio path.
+    transcript_cache: str = ""
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":
@@ -147,6 +153,72 @@ def split_samples(samples: list[dict], holdout_apps: set[str]) -> tuple[list[dic
         apps = set(sample.get("context", {}).get("installed_apps") or {})
         (holdout if apps & holdout_apps else train).append(sample)
     return train, holdout
+
+
+# --- transcripts ------------------------------------------------------------------
+
+def load_transcript_cache(path: str | Path | None) -> dict[str, str]:
+    """Read the raw ASR transcript cache: {split-relative audio path: transcript}.
+
+    The cache is the file the ``transcribe`` command writes. The keys are the paths
+    relative to the split root, so the same file serves the training dataset and the
+    runtime.
+    """
+    if not path:
+        return {}
+    target = Path(path)
+    if not target.is_file():
+        return {}
+    cache: dict[str, str] = {}
+    with target.open(encoding="utf-8") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            cache[record["path"]] = record["text"]
+    return cache
+
+
+def choose_transcripts(samples: list[dict], cache: dict[str, str], source: str,
+                       ratio: float, seed: int) -> tuple[dict[str, str], object]:
+    """Pick the transcript each sample is trained on.
+
+    ``gold``  the split's own transcript — clean, punctuated, correctly cased
+    ``asr``   the recogniser's output — the test-time distribution
+    ``mix``   ``ratio`` of the samples use the ASR output, the rest the gold one
+
+    The choice is seeded, so two runs over the same split build the same dataset.
+    Returns the {sample id: transcript} mapping (only the samples that use the ASR
+    output appear in it; the others fall back to the split's transcript) and a
+    callable that resolves a *history* turn the same way.
+    """
+    rng = random.Random(seed)
+    chosen: dict[str, str] = {}
+    use_asr: set[str] = set()
+
+    for sample in samples:
+        sample_id = sample["id"]
+        audio = sample.get("audio") or ""
+        text = cache.get(audio) if audio else None
+        if not text:
+            continue
+        if source == "asr":
+            take = True
+        elif source == "mix":
+            take = rng.random() < ratio
+        else:
+            take = False
+        if take:
+            use_asr.add(sample_id)
+            chosen[sample_id] = text
+
+    def turn_transcript(turn: dict, sample_id: str = "") -> str:
+        if sample_id not in use_asr:
+            return ""
+        audio = turn.get("audio") or ""
+        return cache.get(audio, "") if audio else ""
+
+    return chosen, turn_transcript
 
 
 # --- checkpoints ---------------------------------------------------------------
@@ -284,18 +356,24 @@ def run_training(data_dir: str, output_dir: str, config_path: str | None = None,
                  epochs: int | None = None, batch_size: int | None = None,
                  resume: bool = False, resume_path: str | None = None,
                  split: str = "train", smoke: bool = False,
-                 limit: int | None = None) -> dict:
+                 limit: int | None = None, case_mode: str | None = None,
+                 transcript_cache: str | None = None) -> dict:
     """Run the training pipeline.
 
     ``resume`` picks up from the ``last`` checkpoint when one exists, so a Colab
     disconnect costs at most the current epoch. ``smoke`` runs a handful of steps on a
-    small subset to verify the pipeline before a long run.
+    small subset to verify the pipeline before a long run. ``case_mode`` overrides the
+    config's casing policy, which is how the ablation arms are selected.
     """
     config = TrainConfig.from_yaml(config_path) if config_path else TrainConfig()
     if epochs is not None:
         config.num_train_epochs = epochs
     if batch_size is not None:
         config.per_device_train_batch_size = batch_size
+    if case_mode is not None:
+        config.case_mode = case_mode
+    if transcript_cache is not None:
+        config.transcript_cache = transcript_cache
 
     set_seed(config.seed)
 
@@ -317,8 +395,32 @@ def run_training(data_dir: str, output_dir: str, config_path: str | None = None,
         config.logging_steps = 1
         config.save_total_limit = 1
 
-    train_examples = build_examples(split_dir, train_samples)
-    holdout_examples = build_examples(split_dir, holdout_samples)
+    # The casing policy and the transcripts the model is trained on. The policy is set
+    # process-wide so the training prompt and the inference prompt cannot disagree.
+    set_case_mode(config.case_mode)
+    cache = load_transcript_cache(config.transcript_cache)
+    if cache:
+        print(f"transcript cache: {len(cache)} utterances from {config.transcript_cache}",
+              flush=True)
+    train_transcripts, train_turn_transcript = choose_transcripts(
+        train_samples, cache, config.transcript_source, config.asr_transcript_ratio,
+        config.seed)
+    holdout_transcripts, holdout_turn_transcript = choose_transcripts(
+        holdout_samples, cache, config.transcript_source, config.asr_transcript_ratio,
+        config.seed)
+    if config.transcript_source != "gold":
+        print(f"transcript source: {config.transcript_source} "
+              f"({len(train_transcripts)}/{len(train_samples)} train samples on ASR text)",
+              flush=True)
+
+    train_examples = build_examples(split_dir, train_samples,
+                                    transcripts=train_transcripts,
+                                    transcript_for_turn=train_turn_transcript,
+                                    case_mode=config.case_mode)
+    holdout_examples = build_examples(split_dir, holdout_samples,
+                                      transcripts=holdout_transcripts,
+                                      transcript_for_turn=holdout_turn_transcript,
+                                      case_mode=config.case_mode)
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)

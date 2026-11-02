@@ -316,7 +316,11 @@ def spoken_time_to_clock(text: str) -> str | None:
     """
     if not text:
         return None
-    normalized = normalize_numbers(text)
+    # The value can reach us capitalised — the model may write "Sáu giờ chiều" —
+    # and the number pass is case-sensitive (a capital "Ba" is a name as often as it
+    # is three), so the text is lowered here: in a time phrase the word before "giờ"
+    # is a number, never a name.
+    normalized = normalize_numbers(text.lower())
     clock = _CLOCK_PATTERN.search(normalized)
     if clock:
         hour, minute = int(clock.group(1)), int(clock.group(2))
@@ -527,7 +531,10 @@ def normalize_number_value(value, declared_type: str):
             return int(value) if value.is_integer() else None
         if not isinstance(value, str):
             return None
-        text = normalize_numbers(value)
+        # The value is lowercased first: the transcript is lowercase, so the model may
+        # answer "Ba mươi", and the number pass is case-sensitive — a capital "Ba"
+        # would otherwise survive as a word and fail the integer check.
+        text = normalize_numbers(value.lower())
         text = re.sub(r"(?i)phần\s*trăm|phan\s*tram|%", " ", text)
         text = text.replace(" ", "")
         if not re.fullmatch(r"-?\d+", text):
@@ -539,7 +546,7 @@ def normalize_number_value(value, declared_type: str):
             return None
         if not isinstance(value, str):
             return None
-        text = normalize_numbers(value)
+        text = normalize_numbers(value.lower())
         text = re.sub(r"(?i)phần\s*trăm|phan\s*tram|%", " ", text)
         text = text.replace(",", ".")
         text = text.replace(".", "", 1) if text.count(".") > 1 else text

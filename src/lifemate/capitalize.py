@@ -44,6 +44,11 @@ The rules, in the order they earned their place:
 The rules cannot settle an ambiguous token on their own, so the context model in
 ``case_model.py`` decides the remaining cases; it is layered on top of this module and
 leaves the decisions below to it. See ``docs/DECISIONS.md``, Decision 9.
+
+**This module is not in the runtime path any more.** The transcript reaches the policy
+model in lowercase and the model casts the arguments itself (Decision 24); this code is
+kept as the ablation baseline, selectable with ``--case-mode rules``. Every number
+above was measured with it in the path.
 """
 from __future__ import annotations
 

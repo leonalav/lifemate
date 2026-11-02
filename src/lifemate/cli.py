@@ -42,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="use only the first N samples")
     train.add_argument("--smoke", action="store_true",
                        help="verify the pipeline on a tiny subset instead of training")
+    train.add_argument("--case-mode", choices=["none", "rules", "model"], default=None,
+                       help="the casing policy the transcript reaches the model in "
+                            "(default none: lowercase, the model casts the arguments)")
+    train.add_argument("--transcripts", default=None,
+                       help="JSONL cache of raw ASR transcripts (from 'lifemate transcribe')")
 
     # --- infer -----------------------------------------------------------------------
     infer = sub.add_parser("infer", help="run the agent over a split.")
@@ -65,6 +70,17 @@ def build_parser() -> argparse.ArgumentParser:
                        help="directory holding the gipformer ONNX bundle")
     infer.add_argument("--no-asr", action="store_true",
                        help="skip transcription and use the split's own text field")
+    infer.add_argument("--case-mode", choices=["none", "rules", "model"], default=None,
+                       help="the casing policy the transcript reaches the model in "
+                            "(default none: lowercase, the model casts the arguments)")
+    infer.add_argument("--case-hint", action="store_true",
+                       help="let a pretrained truecaser contribute a casing hint to the "
+                            "prompt (the weights must be present)")
+    infer.add_argument("--truecaser-model", default=None,
+                       help="the truecaser weights to use (default: PhoBERT)")
+    infer.add_argument("--use-asr", action="store_true",
+                       help="use the ASR transcript even on a labelled split (the "
+                            "ablation needs the test-time text, not the reference one)")
 
     # --- score -----------------------------------------------------------------------
     score = sub.add_parser("score", help="score a submission against the gold labels.")
@@ -84,6 +100,11 @@ def build_parser() -> argparse.ArgumentParser:
                             help="output JSONL: {path, text} per utterance")
     transcribe.add_argument("--asr-model-dir", default=None)
     transcribe.add_argument("--limit", type=int, default=None)
+    transcribe.add_argument("--case-mode", choices=["raw", "none", "rules", "model"],
+                            default="raw",
+                            help="'raw' keeps the recogniser's uppercase output, which is "
+                                 "what the training dataset wants; the others apply a "
+                                 "casing policy to the cached text")
 
     # --- merge ------------------------------------------------------------------------
     merge = sub.add_parser("merge", help="merge the LoRA adapter into the base model.")
@@ -131,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
             split=args.split,
             smoke=args.smoke,
             limit=args.limit,
+            case_mode=args.case_mode,
+            transcript_cache=args.transcripts,
         )
         print(json.dumps(state, ensure_ascii=False, indent=2))
         return 0
@@ -150,6 +173,10 @@ def main(argv: list[str] | None = None) -> int:
             asr_model_dir=args.asr_model_dir or "",
             limit=args.limit,
             ids_file=args.ids_file,
+            case_mode=args.case_mode or "",
+            case_hint=args.case_hint,
+            truecaser_model=args.truecaser_model or "",
+            use_asr_transcripts=args.use_asr,
         )
         report = run_inference(args.data_dir, args.split, policy,
                                args.output_file, config)
@@ -195,11 +222,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "transcribe":
         from .asr import Recognizer, TranscriptStore, audio_path
+        from .casing import apply_case
         from .data import resolve_split
 
         split = resolve_split(args.data_dir, args.split)
         recognizer = Recognizer(args.asr_model_dir)
-        store = TranscriptStore(args.out, recognizer)
+        store = TranscriptStore(args.out, recognizer, root=split.path)
         samples = list(split.iter_samples())
         if args.limit:
             samples = samples[: args.limit]
@@ -219,6 +247,10 @@ def main(argv: list[str] | None = None) -> int:
             if count % 50 == 0:
                 print(f"  transcribed {count} samples", flush=True)
         store.flush()
+        if args.case_mode != "raw":
+            for key, text in list(store.cache.items()):
+                store.cache[key] = apply_case(text, args.case_mode)
+            store.flush()
         print(f"transcripts -> {args.out}  ({len(store.cache)} utterances)")
         return 0
 

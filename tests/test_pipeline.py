@@ -82,9 +82,10 @@ def test_the_asr_transcript_is_recased_to_sentence_case():
     # cost of the recasing (docs/DECISIONS.md, Decision 6), and it is safe because
     # free-text arguments are fuzzy, where both sides are lowercased before matching.
     assert recase("MAI ANH DẬY SÁNG") == "Mai anh dậy sáng"
-    # a full stop between digits is a thousands separator, not a sentence end
-    assert recase("200.000 ĐỒNG") == "200.000 Đồng"
-    assert recase("CHUYỂN 2.500.000 ĐỒNG") == "Chuyển 2.500.000 Đồng"
+    # A full stop between digits is a thousands separator, not a sentence end, so the
+    # word after the number keeps the lower case the sentence case gives it.
+    assert recase("200.000 ĐỒNG") == "200.000 đồng"
+    assert recase("CHUYỂN 2.500.000 ĐỒNG") == "Chuyển 2.500.000 đồng"
 
 
 def test_recasing_keeps_the_text_readable():
@@ -149,7 +150,9 @@ def test_prompt_contains_the_installed_schemas_and_the_request(train_split):
     sample = next(train_split.iter_samples())
     prompt = build_prompt(train_split, sample, sample["audio_text"])
     assert "smart_home.light_set" in prompt
-    assert sample["audio_text"] in prompt
+    # The transcript reaches the model in lowercase: the policy model casts the
+    # arguments itself (docs/DECISIONS.md, Decision 24).
+    assert sample["audio_text"].lower() in prompt
     assert "Bảng ngày tương đối" in prompt
     # the request must not be drowned out by the schemas
     assert len(prompt) < 40000

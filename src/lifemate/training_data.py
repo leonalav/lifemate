@@ -10,6 +10,11 @@ distribution), optionally mixed with the gold transcript for stability. ASR-fine
 transcripts are deliberately not used for LLM training: a fine-tuned ASR memorises train
 audio and hides the real error modes from the policy (docs/PRD.md §5.1).
 
+The transcript reaches the model in the pipeline's casing policy — lowercase by
+default — while the target (the gold action) keeps the user's own capitalisation. The
+model therefore has to learn to cast the arguments itself (docs/DECISIONS.md,
+Decision 24).
+
 One ``ToolEnv`` session per sample, created once — the same rule the agent loop follows.
 """
 from __future__ import annotations
@@ -47,20 +52,41 @@ def _completion(action: dict | None) -> str:
 
 
 def build_examples(split: Split, samples: list[dict], transcripts: dict[str, str] | None = None,
-                   limit: int | None = None) -> list[Example]:
+                   transcript_for_turn=None, limit: int | None = None,
+                   case_mode: str | None = None, case_fn=None) -> list[Example]:
     """Unroll the gold trajectories into next-action examples.
 
-    ``transcripts`` maps sample id -> transcript text. Samples without an entry fall back
-    to the split's own transcript field (train carries ``audio_text``).
+    ``transcripts`` maps sample id -> transcript text (the ASR cache, keyed by the
+    sample's ``audio`` field). Samples without an entry fall back to the split's own
+    transcript field (train carries ``audio_text``).
+
+    ``transcript_for_turn`` resolves the transcript of a *history* turn the same way,
+    so a history turn reads like the recogniser's output rather than like the
+    reference transcript.
+
+    The completion is the gold action, whose string arguments are correctly cased;
+    the prompt holds the transcript in the pipeline's casing policy (lowercase by
+    default). That mismatch is the point: the model has to learn to cast the
+    arguments itself (docs/DECISIONS.md, Decision 24).
     """
     examples: list[Example] = []
     transcripts = transcripts or {}
+
+    def turn_transcript(turn: dict, sample_id: str = "") -> str:
+        if transcript_for_turn is not None:
+            found = transcript_for_turn(turn, sample_id)
+            if found:
+                return found
+        return turn.get("audio_text") or ""
 
     for sample in samples[:limit] if limit else samples:
         sample_id = sample["id"]
         transcript = transcripts.get(sample_id) or sample.get("audio_text") or ""
         if not transcript:
             continue
+
+        def history_text(turn: dict, _sample_id: str = sample_id) -> str:
+            return turn_transcript(turn, _sample_id)
 
         gold_calls = (sample.get("label") or {}).get("tool_calls") or []
         session = tool_env(split, sample_id)
@@ -73,7 +99,9 @@ def build_examples(split: Split, samples: list[dict], transcripts: dict[str, str
         for step, call in enumerate(gold_calls):
             prompt = build_prompt(
                 split, working, transcript,
-                transcript_for_history=lambda turn: (turn.get("audio_text") or ""),
+                transcript_for_history=history_text,
+                case_mode=case_mode,
+                case_fn=case_fn,
             )
             examples.append(Example(
                 prompt=prompt,
@@ -97,7 +125,9 @@ def build_examples(split: Split, samples: list[dict], transcripts: dict[str, str
             working["history"] = (working.get("history") or []) + history
             prompt = build_prompt(
                 split, working, transcript,
-                transcript_for_history=lambda turn: (turn.get("audio_text") or ""),
+                transcript_for_history=history_text,
+                case_mode=case_mode,
+                case_fn=case_fn,
             )
             examples.append(Example(
                 prompt=prompt,

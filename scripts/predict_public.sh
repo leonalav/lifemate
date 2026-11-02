@@ -29,5 +29,13 @@ fi
 if [[ -n "${TRANSCRIPT_CACHE:-}" ]]; then
   ARGS+=(--transcript-cache "$TRANSCRIPT_CACHE")
 fi
+if [[ -n "${CASE_MODE:-}" ]]; then
+  # "none" (the default) keeps the transcript lowercase: the policy model casts the
+  # arguments itself. "rules" and "model" are the recasing baselines.
+  ARGS+=(--case-mode "$CASE_MODE")
+fi
+if [[ "${CASE_HINT:-0}" == "1" ]]; then
+  ARGS+=(--case-hint)
+fi
 
 python -m lifemate infer "${ARGS[@]}"

@@ -1,0 +1,650 @@
+{
+  "counts": {
+    "clock_kem": 13,
+    "clock_ruoi": 73,
+    "clock_ruoi_no_gio": 73,
+    "number_chuc": 23,
+    "number_hai_lam": 3,
+    "number_muoi_lam": 16,
+    "number_ti": 1,
+    "number_linh": 4
+  },
+  "examples": {
+    "clock_kem": [
+      {
+        "id": "train_0027",
+        "text": "Nhắc dùm chị ra sân bay lúc 8 giờ kém 15 tối mai nha.",
+        "gold_arguments": [
+          "content='ra sân bay'",
+          "time='2026-11-18T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0061",
+        "text": "Nhắc mình gọi lại cho khách lúc 9 giờ kém 15 tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-07T20:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0066",
+        "text": "Nhắc mình gọi lại cho khách lúc 9 giờ kém 15 tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-22T20:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0096",
+        "text": "Nhắc tôi gọi lại cho khách lúc 8 giờ kém 15 tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-12T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0097",
+        "text": "Nhắc tôi uống thuốc lúc 8 giờ kém 15 tối mai với.",
+        "gold_arguments": [
+          "content='uống thuốc'",
+          "time='2026-11-25T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0132",
+        "text": "Nhắc em gọi lại cho khách lúc 9 giờ kém 15 tối mai nhé ạ.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-03T20:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0168",
+        "text": "Nhắc mình gọi lại cho khách lúc 8 giờ kém 15 tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-19T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0178",
+        "text": "Nhắc em gọi lại cho khách lúc 8 giờ kém 15 tối mai nha.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-26T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0237",
+        "text": "Nhắc chị tắt bếp lúc 8 giờ kém 15 tối mai nhé.",
+        "gold_arguments": [
+          "content='tắt bếp'",
+          "time='2026-11-23T19:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0247",
+        "text": "Nhớ nhắc tôi uống thuốc lúc 9 giờ kém 15 tối mai với nhé.",
+        "gold_arguments": [
+          "content='uống thuốc'",
+          "time='2026-11-17T20:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0301",
+        "text": "Nhắc mình tắt bếp lúc 8 giờ kém 15 sáng mai nha.",
+        "gold_arguments": [
+          "content='tắt bếp'",
+          "time='2026-11-10T07:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0399",
+        "text": "Nhắc tôi uống thuốc lúc 9 giờ kém 15 tối mai nha.",
+        "gold_arguments": [
+          "content='uống thuốc'",
+          "time='2026-11-14T20:45:00+07:00'"
+        ]
+      }
+    ],
+    "clock_ruoi": [
+      {
+        "id": "train_0007",
+        "text": "Đặt báo thức 5 giờ nhé, à không, 5 rưỡi sáng mai đó",
+        "gold_arguments": [
+          "time='2026-11-11T05:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0031",
+        "text": "Nhớ nhắc mình gọi lại cho khách lúc tám rưỡi tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-06T20:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0042",
+        "text": "Đặt báo thức 6 rưỡi sáng mai với gọi cho Minh giúp tôi nhé.",
+        "gold_arguments": [
+          "time='2026-11-17T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0052",
+        "text": "Đặt báo thức 6 rưỡi sáng mai và gọi cho Minh giúp tôi.",
+        "gold_arguments": [
+          "time='2026-11-03T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0060",
+        "text": "Đặt giùm tui báo thức 7 rưỡi sáng mai nha.",
+        "gold_arguments": [
+          "time='2026-11-19T07:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0103",
+        "text": "Đặt báo thức 6 rưỡi sáng mai, rồi gọi cho Minh giúp tôi nhé.",
+        "gold_arguments": [
+          "time='2026-11-13T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0228",
+        "text": "Đặt báo thức sáu rưỡi sáng mai, rồi gọi cho Lan dùm tôi nha.",
+        "gold_arguments": [
+          "time='2026-11-06T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0243",
+        "text": "Cho tôi báo thức sáu rưỡi sáng mai, với lại gọi cho Lan nữa nhé.",
+        "gold_arguments": [
+          "time='2026-11-27T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0244",
+        "text": "Báo thức sáu giờ rưỡi sáng mai nhé, với lại chuyển ví cho Minh chút tiền giùm tôi.",
+        "gold_arguments": [
+          "query='Minh'",
+          "time='2026-11-13T06:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0250",
+        "text": "Đặt báo thức bảy rưỡi sáng mai giúp mình, rồi chuyển ví cho Mẹ ít tiền nha.",
+        "gold_arguments": [
+          "query='Mẹ'",
+          "time='2026-11-22T07:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0263",
+        "text": "Đặt báo thức năm rưỡi sáng mai, với chuyển ví cho Bố ít tiền nhé.",
+        "gold_arguments": [
+          "query='Bố'",
+          "time='2026-11-14T05:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0269",
+        "text": "Đặt báo thức sáu rưỡi sáng mai giúp mình, với gọi cho Lan luôn nhé.",
+        "gold_arguments": [
+          "time='2026-11-12T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      }
+    ],
+    "clock_ruoi_no_gio": [
+      {
+        "id": "train_0007",
+        "text": "Đặt báo thức 5 giờ nhé, à không, 5 rưỡi sáng mai đó",
+        "gold_arguments": [
+          "time='2026-11-11T05:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0031",
+        "text": "Nhớ nhắc mình gọi lại cho khách lúc tám rưỡi tối mai nhé.",
+        "gold_arguments": [
+          "content='gọi lại cho khách'",
+          "time='2026-11-06T20:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0042",
+        "text": "Đặt báo thức 6 rưỡi sáng mai với gọi cho Minh giúp tôi nhé.",
+        "gold_arguments": [
+          "time='2026-11-17T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0052",
+        "text": "Đặt báo thức 6 rưỡi sáng mai và gọi cho Minh giúp tôi.",
+        "gold_arguments": [
+          "time='2026-11-03T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0060",
+        "text": "Đặt giùm tui báo thức 7 rưỡi sáng mai nha.",
+        "gold_arguments": [
+          "time='2026-11-19T07:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0103",
+        "text": "Đặt báo thức 6 rưỡi sáng mai, rồi gọi cho Minh giúp tôi nhé.",
+        "gold_arguments": [
+          "time='2026-11-13T06:30:00+07:00'",
+          "query='Minh'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0228",
+        "text": "Đặt báo thức sáu rưỡi sáng mai, rồi gọi cho Lan dùm tôi nha.",
+        "gold_arguments": [
+          "time='2026-11-06T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0243",
+        "text": "Cho tôi báo thức sáu rưỡi sáng mai, với lại gọi cho Lan nữa nhé.",
+        "gold_arguments": [
+          "time='2026-11-27T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      },
+      {
+        "id": "train_0244",
+        "text": "Báo thức sáu giờ rưỡi sáng mai nhé, với lại chuyển ví cho Minh chút tiền giùm tôi.",
+        "gold_arguments": [
+          "query='Minh'",
+          "time='2026-11-13T06:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0250",
+        "text": "Đặt báo thức bảy rưỡi sáng mai giúp mình, rồi chuyển ví cho Mẹ ít tiền nha.",
+        "gold_arguments": [
+          "query='Mẹ'",
+          "time='2026-11-22T07:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0263",
+        "text": "Đặt báo thức năm rưỡi sáng mai, với chuyển ví cho Bố ít tiền nhé.",
+        "gold_arguments": [
+          "query='Bố'",
+          "time='2026-11-14T05:30:00+07:00'",
+          "tool_name='ewallet.transfer'"
+        ]
+      },
+      {
+        "id": "train_0269",
+        "text": "Đặt báo thức sáu rưỡi sáng mai giúp mình, với gọi cho Lan luôn nhé.",
+        "gold_arguments": [
+          "time='2026-11-12T06:30:00+07:00'",
+          "query='Lan'",
+          "tool_name='phone.call'"
+        ]
+      }
+    ],
+    "number_chuc": [
+      {
+        "id": "train_0751",
+        "text": "Chuyển cho chị Mai bên hậu cần năm chục nghìn tiền hoàn ứng nhé, xong nhắn Zalo cho chị ấy là em chuyển rồi.",
+        "gold_arguments": [
+          "query='Mai'",
+          "contact_id='c_04'",
+          "amount=50000",
+          "note='Hoàn ứng'",
+          "chat_id='chat_04'",
+          "content='Chị Mai ơi, em vừa chuyển 50.000 đồng tiền hoàn ứng cho chị rồi nhé.'"
+        ]
+      },
+      {
+        "id": "train_0934",
+        "text": "Ờ xe nằm xưởng rồi. Coi lịch hẹn Anh Sáu ở đâu, gọi lẹ xe từ nhà qua, bốn chỗ dưới trăm thì lấy, à không, dưới chín chục, hông thì xe máy.",
+        "gold_arguments": [
+          "date_from='2026-11-23'",
+          "date_to='2026-11-23'",
+          "pickup='88/5 Phạm Văn Đồng, Gò Vấp, TP.HCM'",
+          "dropoff='Văn phòng Anh Sáu, 45 Hoàng Văn Thụ, Tân Bình'",
+          "pickup='88/5 Phạm Văn Đồng, Gò Vấp, TP.HCM'",
+          "dropoff='Văn phòng Anh Sáu, 45 Hoàng Văn Thụ, Tân Bình'",
+          "vehicle='bike'"
+        ]
+      },
+      {
+        "id": "train_0964",
+        "text": "Ờ… em hạ cảnh báo xuống hai trăm… à không, lấy mức đang để trừ năm chục số thôi.",
+        "gold_arguments": [
+          "threshold_kwh=250"
+        ]
+      },
+      {
+        "id": "train_1003",
+        "text": "Con ơi, cô ăn bánh xèo Bà Dưỡng xong rồi. Đừng trừ tiền ngân hàng nghe, con thanh toán cái mã QR của quán qua ví, chín chục nghìn.",
+        "gold_arguments": [
+          "tool_name='ewallet.pay_qr'"
+        ]
+      },
+      {
+        "id": "train_1024",
+        "text": "Giữ chiếc điện bên Lưu Hữu Phước, à không, bến Ninh Kiều. Tiếng rưỡi mà quá ba chục thì lấy xe thể thao nghen.",
+        "gold_arguments": [
+          "bike_id='bike_585'"
+        ]
+      },
+      {
+        "id": "train_1118",
+        "text": "Dò tờ bảy hai không chín một một. Thêm chục hột gà vô việc cần làm, lộn, vô đi chợ.",
+        "gold_arguments": [
+          "province='TP.HCM'",
+          "date='2026-10-24'",
+          "number='720911'",
+          "name='hột gà'",
+          "quantity=10"
+        ]
+      },
+      {
+        "id": "train_1163",
+        "text": "Ghi dùm tôi năm giờ sáng nay đi bộ bốn chục phút, rồi coi hôm qua tôi đi chưa tới sáu ngàn bước thì hạ mục tiêu còn sáu ngàn nghen.",
+        "gold_arguments": [
+          "type='walking'",
+          "minutes=40",
+          "time='2026-11-03T05:00:00+07:00'",
+          "date='2026-11-02'",
+          "steps=6000"
+        ]
+      },
+      {
+        "id": "train_1204",
+        "text": "Rứa con tìm báo coi điểm MinhPoint có bị xoá thiệt không, thiệt thì đổi phiếu năm chục, à không, phiếu một trăm, rồi trả lời thư con Thảo là mẹ đổi rồi.",
+        "gold_arguments": [
+          "query='MinhPoint'",
+          "program='prog_877'",
+          "reward_id='rw_02_1'",
+          "email_id='mail_7302'",
+          "body='Mẹ đổi rồi'"
+        ]
+      },
+      {
+        "id": "train_1212",
+        "text": "Em dừng con robot lại giúp chị, à khoan, pin nó còn dưới bảy chục phần trăm thì hẵng dừng nhé.",
+        "gold_arguments": []
+      },
+      {
+        "id": "train_1221",
+        "text": "Con Thảo mới gửi về ba chục ngàn yên, con quy ra tiền Việt rồi Zalo báo nó được nhiêu nghe.",
+        "gold_arguments": [
+          "amount=30000",
+          "from_currency='JPY'",
+          "to_currency='VND'",
+          "chat_id='chat_9215'",
+          "content='Mẹ nhận ba chục ngàn yên rồi, đổi ra được 5.202.000 đồng nghe con.'"
+        ]
+      },
+      {
+        "id": "train_1241",
+        "text": "Trời, vậy em để cảnh báo điện cao hơn mức đó năm chục số thôi. Xong check Cao Nguyên, đủ điểm đổi voucher năm chục thì đổi, không thì lấy ly phin sữa đá.",
+        "gold_arguments": [
+          "threshold_kwh=360",
+          "program='Cao Nguyên Rewards'",
+          "program='prog_7146'",
+          "reward_id='rw_02_1'"
+        ]
+      },
+      {
+        "id": "train_1275",
+        "text": "Tám chục ký, sáu mươi lăm ngàn một ký. Cộng chung tiền xoài luôn, rồi nhắc tôi bảy giờ tối nay đem tiền qua anh Mười hen.",
+        "gold_arguments": [
+          "expression='80*65000+5400000'",
+          "content='Đem tiền qua trả anh Mười'",
+          "time='2026-12-11T19:00:00+07:00'"
+        ]
+      }
+    ],
+    "number_hai_lam": [
+      {
+        "id": "train_0466",
+        "text": "Tìm giúp anh quán cà phê nào yên tĩnh gần Nhà hát Lớn ấy, xem luôn đường từ nhà qua đấy thế nào, xong hai lăm phút nữa thì nhắc anh ra khỏi nhà nhé.",
+        "gold_arguments": [
+          "query='cà phê'",
+          "origin='25 Láng Hạ, Đống Đa, Hà Nội'",
+          "destination='Cà phê Ban Mai, 8 Tràng Tiền, Hoàn Kiếm, Hà Nội'",
+          "content='Rời nhà đi Cà phê Ban Mai'",
+          "time='2026-09-25T09:25:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0972",
+        "text": "Ờ, đô bữa nay trên hai lăm ngàn rưỡi thì kêu xe máy ra tiệm vàng hồi nãy, à thôi, xe bốn chỗ con.",
+        "gold_arguments": [
+          "from_currency='USD'",
+          "to_currency='VND'",
+          "pickup='Tiệm tạp hóa Thảo, 203 Lê Văn Sỹ, Quận 3'",
+          "dropoff='Tiệm vàng Kim Mai, Hải Thượng Lãn Ông, Quận 5'",
+          "vehicle='car4'"
+        ]
+      },
+      {
+        "id": "train_1195",
+        "text": "Mai deadline sớm, mình ngủ đây. Ngoài trời còn trên hai lăm độ thì bật máy lạnh phòng ngủ hai sáu nha, rồi tắt cái TV còn mở luôn.",
+        "gold_arguments": [
+          "device_id='ac_bedroom'",
+          "mode='cool'",
+          "temperature=26",
+          "device_id='tv_living'",
+          "power='off'"
+        ]
+      }
+    ],
+    "number_muoi_lam": [
+      {
+        "id": "train_0070",
+        "text": "Đặt xe bốn chỗ từ công ty tới chỗ hẹn cà phê với gia đình chiều nay, đón trước giờ hẹn nửa tiếng, nhắc tôi mang laptop trước lúc xe đón mười lăm phút.",
+        "gold_arguments": [
+          "pickup='Tòa nhà Kim Cương, Nam Từ Liêm, Hà Nội'",
+          "dropoff='Cà phê Giảng, 39 Nguyễn Hữu Huân, Hoàn Kiếm, Hà Nội'",
+          "vehicle='car4'",
+          "schedule_time='2026-11-27T15:00:00+07:00'",
+          "content='mang laptop'",
+          "time='2026-11-27T14:45:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0076",
+        "text": "Đặt xe bốn chỗ từ công ty đến chỗ hẹn cà phê với gia đình chiều nay, đón sớm bốn mươi lăm phút, nhắc tôi mang laptop trước giờ xe đón mười lăm phút.",
+        "gold_arguments": [
+          "pickup='Công viên phần mềm, Hải Châu, Đà Nẵng'",
+          "dropoff='Cà phê Long, 123 Lê Lợi, Hải Châu, Đà Nẵng'",
+          "vehicle='car4'",
+          "schedule_time='2026-11-17T13:45:00+07:00'",
+          "content='mang laptop'",
+          "time='2026-11-17T13:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0085",
+        "text": "Chiều nay em có hẹn đi chơi công viên, đặt xe bốn chỗ từ công ty đến đó, đón sớm bốn mươi lăm phút, nhắc em mang laptop trước lúc xe tới mười lăm phút.",
+        "gold_arguments": [
+          "pickup='Tòa nhà Kim Cương, Nam Từ Liêm, Hà Nội'",
+          "dropoff='Công viên Cầu Giấy, 6 Trần Thái Tông, Cầu Giấy, Hà Nội'",
+          "vehicle='car4'",
+          "schedule_time='2026-11-18T14:45:00+07:00'",
+          "content='mang laptop'",
+          "time='2026-11-18T14:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0604",
+        "text": "Em ơi, hôm nay nhà mình dùng điện quá mười lăm số chưa, mà quá thì ghi chú lại cho chị để chị kiểm tra mấy cái thiết bị nhé.",
+        "gold_arguments": [
+          "period='today'"
+        ]
+      },
+      {
+        "id": "train_0618",
+        "text": "Tôi vừa cho bộ đồ thể thao vào máy giặt rồi, bật chế độ giặt nhanh giúp tôi, rồi mười giờ mười lăm nhắc tôi ra lấy đồ nhé.",
+        "gold_arguments": [
+          "appliance_id='appl_01'",
+          "cycle='quick'",
+          "content='Lấy đồ thể thao ra khỏi máy giặt'",
+          "time='2026-10-01T10:15:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0771",
+        "text": "Ở phòng khách có mấy cái máy lọc không khí đó, cái nào đang chạy mà công suất dưới năm mươi oát thì cài cho nó tự tắt lúc mười một giờ mười lăm tối hằng ngày giúp chị nha.",
+        "gold_arguments": [
+          "room='phòng khách'",
+          "device_id='purifier_living'",
+          "action='off'",
+          "time='23:15'",
+          "title='Tắt máy lọc không khí 42W phòng khách'"
+        ]
+      },
+      {
+        "id": "train_0846",
+        "text": "Nhắn cho Minh giúp anh là chiều nay anh tới trễ chừng mười lăm phút nha.",
+        "gold_arguments": [
+          "tool_name='chat_ott.send_message'"
+        ]
+      },
+      {
+        "id": "train_0848",
+        "text": "Sáng mai em có lịch khám ở Bệnh viện Bạch Mai lúc chín giờ, xem giúp em đường từ nhà qua đó với, xong tám giờ mười lăm nhắc em ra khỏi nhà nha.",
+        "gold_arguments": [
+          "origin='25 Láng Hạ, Đống Đa, Hà Nội'",
+          "destination='Bệnh viện Bạch Mai'",
+          "content='Rời nhà đi khám ở Bệnh viện Bạch Mai'",
+          "time='2026-09-21T08:15:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0908",
+        "text": "Chín giờ sáng mai anh phải có mặt ở Bệnh viện Bạch Mai, em xem đi xe máy từ nhà qua đấy mất bao lâu, rồi nhắc anh ra khỏi nhà sao cho tới sớm mười lăm phút nhé.",
+        "gold_arguments": [
+          "origin='25 Láng Hạ, Đống Đa, Hà Nội'",
+          "destination='Bệnh viện Bạch Mai'",
+          "mode='motorbike'",
+          "content='Rời nhà đi Bệnh viện Bạch Mai'",
+          "time='2026-09-22T08:30:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0943",
+        "text": "Chuyển ví anh Lộc tiền mười lăm lít xăng E5, à không, xăng 95 nha con.",
+        "gold_arguments": [
+          "type='ron95'",
+          "query='Anh Lộc'",
+          "contact_id='c_821'",
+          "amount=342000"
+        ]
+      },
+      {
+        "id": "train_0966",
+        "text": "Kiện nào giao tới trước giờ chị về thì em đặt nhắc chị trước mười lăm phút nhé, để chị gọi anh ấy ra nhận.",
+        "gold_arguments": [
+          "content='Gọi anh Hùng ra nhận bộ chăn ga gối'",
+          "time='2026-11-22T13:45:00+07:00'",
+          "content='Gọi anh Hùng ra nhận ốp lưng điện thoại'",
+          "time='2026-11-22T16:15:00+07:00'"
+        ]
+      },
+      {
+        "id": "train_0999",
+        "text": "Mấy cái họp online bữa nay, cái nào cũng nhắc tôi trước mười lăm phút nha. Rồi hẹn bật đèn phòng khách đúng giờ họp tối, à không, quạt phòng khách.",
+        "gold_arguments": [
+          "content='Họp hội nhà vườn online'",
+          "time='2026-10-16T14:45:00+07:00'",
+          "content='Họp mặt gia đình với thằng Tí'",
+          "time='2026-10-16T20:15:00+07:00'",
+          "device_id='fan_living'",
+          "action='on'",
+          "time='20:30'"
+        ]
+      }
+    ],
+    "number_ti": [
+      {
+        "id": "train_1162",
+        "text": "Em ơi, xem tin thể thao hộ tôi, trận đội Hà Nội hôm qua ấy, rồi nhắn tỉ số cho ông Ba, à không, cho Tuấn.",
+        "gold_arguments": [
+          "topic='sports'",
+          "query='Tuấn'",
+          "contact_id='c_284'",
+          "content='Trận hôm qua CLB Hà Nội thắng 3-0 trên sân Hàng Đẫy'"
+        ]
+      }
+    ],
+    "number_linh": [
+      {
+        "id": "train_0009",
+        "text": "Nạp dùm em Linh 50 ngàn cho số không chín năm không năm ba sáu không ba sáu bảy nha.",
+        "gold_arguments": [
+          "phone='09505360367'",
+          "amount=50000"
+        ]
+      },
+      {
+        "id": "train_0050",
+        "text": "Alô, cho em Linh hỏi giá vàng SJC hôm nay bao nhiêu dùm nha.",
+        "gold_arguments": [
+          "type='sjc'"
+        ]
+      },
+      {
+        "id": "train_0757",
+        "text": "Ừ, phổ thông linh hoạt, chốt hai vé đó cho anh.",
+        "gold_arguments": [
+          "flight_id='fl_06'",
+          "passengers=2"
+        ]
+      },
+      {
+        "id": "train_0772",
+        "text": "Hội thảo Kết nối Xanh hình như đổi rồi đó em. Tìm thông báo mới nhất của ban tổ chức, nhớ là bài đăng sau thư mời nha, rồi sửa giờ với địa điểm trong lịch, xong nhắn chị Linh điều phối hai thay đổi đó.",
+        "gold_arguments": [
+          "query='Kết nối Xanh'",
+          "event_id='evt_04'",
+          "start='2026-10-16T14:30:00+07:00'",
+          "end='2026-10-16T16:30:00+07:00'",
+          "location='Trung tâm Đổi mới'",
+          "chat_id='chat_01'",
+          "content='Hội thảo Kết nối Xanh ngày 16/10 đổi sang Trung tâm Đổi mới, bắt đầu lúc 14:30 nhé.'"
+        ]
+      }
+    ]
+  }
+}

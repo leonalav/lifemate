@@ -616,3 +616,24 @@ incrementally improve phrasing.
 | G07 parameter counting | **closed** — Qwen3.5-4B at 4.66B *including* the vision tower is under the 5B cap |
 | G09 mixed supported/unsupported, partial state | **closed** — see §12.4 (7.2% out-of-scope, gate decomposition) |
 | G06 timing boundary, G08 loopback server, G10 training-data licensing, G11 post-freeze SDK, G13 cloud-GPU policy | **still open** — ask the organisers |
+
+### 12.13 The capitalisation population, measured on the train split
+
+The decision to let the policy model cast the arguments (docs/DECISIONS.md, Decision 24) is
+measured on one population: the arguments the scorer compares with **exact equality** and
+whose gold value carries a capital. A fuzzy argument is matched on token-F1, which
+lowercases both sides, so a capital cannot change its score.
+
+| Measurement | Result |
+|---|---|
+| Exactly-compared capitalised arguments (train, all 1,545 samples) | **396** |
+| …reproduced exactly by the gold trajectory | **396 / 396** |
+| …missed by a lowercase spelling (same words, wrong case) | 396 / 396 |
+| Train samples that ship an audio file | **1,545 / 1,545** |
+| User history turns | **3,491**, every one with both a transcript and an audio file |
+
+**Consequence.** The train split ships audio for every sample, so the recogniser's output
+can be built for the training set as well — the model can be trained on the text it meets
+at inference time, not only on the reference transcript. And the 396 arguments are the
+population the ablation reports: arm A (the context model recases) against arm B (the
+policy model casts) against arm C (B plus a truecaser hint).

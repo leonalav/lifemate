@@ -57,6 +57,21 @@ ARG ASR_DIR=/models/gipformer
 COPY ${LLM_DIR} /models/llm
 COPY ${ASR_DIR} /models/gipformer
 
+# The optional casing hint. The pretrained truecaser (PhoBERT) contributes a recased
+# copy of the request to the prompt, for names the policy model has never seen
+# (docs/DECISIONS.md, Decision 24). It is off unless the weights are in the image:
+#
+#   docker build --build-arg TRUECASER_DIR=/models/truecaser ...
+#
+# The weights are not copied here by default, because COPY fails on a missing
+# directory and the pipeline runs perfectly well without the hint.
+#
+# ARG TRUECASER_DIR=/models/truecaser
+# COPY ${TRUECASER_DIR} /models/truecaser
+#
+# With the weights present, run the inference with --case-hint
+# --truecaser-model /models/truecaser.
+
 # The competition mounts the private test at /data and collects result/submission.jsonl.
 RUN mkdir -p /data /app/result
 

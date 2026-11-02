@@ -23,9 +23,18 @@ echo "config: $CONFIG"
 export PYTHONPATH="$REPO_DIR/src${PYTHONPATH:+:$PYTHONPATH}"
 export TOKENIZERS_PARALLELISM=false
 
+# The raw ASR transcript cache: the model is trained on the text the recogniser
+# produces, which is the text it meets at inference time.
+if [[ -n "${TRANSCRIPTS:-}" ]]; then
+  TRANSCRIPT_ARGS=(--transcripts "$TRANSCRIPTS")
+else
+  TRANSCRIPT_ARGS=()
+fi
+
 python -m lifemate train \
   --data-dir "$DATA_DIR" \
   --output-dir "$OUTPUT_DIR" \
   --config "$CONFIG" \
   --resume \
+  "${TRANSCRIPT_ARGS[@]}" \
   "$@"

@@ -17,7 +17,9 @@ from pathlib import Path
 from .agent.loop import Agent
 from .agent.policy import Policy
 from .asr import TranscriptStore, audio_path
+from .casing import set_mode as set_case_mode
 from .data import Split, resolve_split
+from .truecaser import load_truecaser
 
 
 @dataclass
@@ -32,6 +34,17 @@ class InferConfig:
     limit: int | None = None
     ids_file: str | None = None
     verbose: bool = True
+    # The casing policy the transcript reaches the model in. Empty means the active
+    # one (lowercase by default). "rules" and "model" are the ablation baselines.
+    case_mode: str = ""
+    # Whether a pretrained truecaser contributes a casing hint to the prompt.
+    case_hint: bool = False
+    # Which truecaser weights to use; empty means the default (PhoBERT).
+    truecaser_model: str = ""
+    # Force the ASR transcript even on a labelled split, where the split's own
+    # transcript would otherwise be used. The ablation needs this: the model is
+    # trained on the recogniser's output and must be scored on it.
+    use_asr_transcripts: bool = False
 
 
 @dataclass
@@ -55,18 +68,20 @@ def load_ids(path: str | Path) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-def make_transcript_fn(split: Split, store: TranscriptStore):
+def make_transcript_fn(split: Split, store: TranscriptStore, prefer_asr: bool = False):
     """A function that returns the transcript of any turn, for the prompt builder.
 
     A labelled split carries its own ``audio_text``; an unlabelled split does not, so
     the audio is transcribed. The labelled text is preferred when it exists because it
-    is free and exact.
+    is free and exact — unless ``prefer_asr`` is set, which is what the ablation needs:
+    the policy is scored on the recogniser's output, the same text it was trained on.
     """
 
     def transcript_fn(turn: dict) -> str:
-        text = turn.get("audio_text")
-        if text:
-            return text
+        if not prefer_asr:
+            text = turn.get("audio_text")
+            if text:
+                return text
         relative = turn.get("audio")
         if not relative:
             return ""
@@ -90,8 +105,21 @@ def run_inference(data_dir: str, split_name: str | None, policy: Policy,
     if config.limit:
         samples = samples[: config.limit]
 
-    store = TranscriptStore(config.transcript_cache or None)
-    transcript_fn = make_transcript_fn(split, store)
+    store = TranscriptStore(config.transcript_cache or None, root=split.path)
+    transcript_fn = make_transcript_fn(split, store, config.use_asr_transcripts)
+
+    # The casing policy is process-wide, so the prompt builder and the runtime agree.
+    if config.case_mode:
+        set_case_mode(config.case_mode)
+
+    # The truecaser is a hint, not a dependency: when the weights are not in the image
+    # the pipeline runs without it.
+    case_fn = None
+    if config.case_hint:
+        case_fn = load_truecaser(config.truecaser_model or None)
+        if case_fn is None:
+            print("  the truecaser is unavailable — running without the casing hint",
+                  flush=True)
 
     agent = Agent(
         split,
@@ -99,6 +127,8 @@ def run_inference(data_dir: str, split_name: str | None, policy: Policy,
         max_steps=config.max_steps,
         time_budget_s=config.time_budget_s,
         transcript_fn=transcript_fn,
+        case_fn=case_fn,
+        case_mode=config.case_mode or None,
     )
 
     report = InferReport(split=split.name, output_file=output_file)
@@ -110,8 +140,11 @@ def run_inference(data_dir: str, split_name: str | None, policy: Policy,
     with output_path.open("w", encoding="utf-8") as fh:
         for index, sample in enumerate(samples):
             # A labelled split carries its own transcript; an unlabelled one does not,
-            # so the audio is transcribed (and cached by path).
-            transcript = sample.get("audio_text")
+            # so the audio is transcribed (and cached by path). The ablation forces
+            # the ASR path even on a labelled split.
+            transcript = ""
+            if not config.use_asr_transcripts:
+                transcript = sample.get("audio_text") or ""
             if not transcript:
                 wav = audio_path(sample, split.path)
                 transcript = store.get(wav) if wav is not None else ""

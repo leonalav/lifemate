@@ -52,3 +52,15 @@ near_duplicate_similarity: 0.92
 # used here: a fine-tuned ASR memorises train audio and hides the real error modes.
 transcript_source: "mix"
 asr_transcript_ratio: 0.5
+
+# The raw ASR transcript cache, written by `python -m lifemate transcribe`. The paths
+# in it are relative to the split root, so one file serves the dataset and the runtime.
+# The Colab notebook writes one into Drive and passes it with --transcripts.
+transcript_cache: ""
+
+# The casing policy the transcript reaches the model in.
+#   "none"   lowercase — the shipped pipeline: the policy model casts the arguments
+#            itself, learning the case from the gold arguments it is trained on
+#   "rules"  the rule module alone (the weaker ablation baseline)
+#   "model"  the context model over the rules (the ablation baseline to beat)
+case_mode: "none"

@@ -204,8 +204,10 @@ FLAG_VALUES = {
     "--report": "/content/drive/scores.jsonl",
     "--out": "/content/drive/transcripts.jsonl",
     "--ids-file": "/content/drive/ids.txt",
+    "--case-mode": "none",
+    "--transcripts": "/content/drive/transcripts.jsonl",
 }
-BOOLEAN_FLAGS = {"--smoke", "--no-asr", "--resume"}
+BOOLEAN_FLAGS = {"--smoke", "--no-asr", "--resume", "--case-hint", "--use-asr"}
 
 for src in code_cells:
     for m in re.finditer(r'"lifemate",\s*"(\w+)",(.*?)\]', src, re.S):

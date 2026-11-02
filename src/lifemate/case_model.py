@@ -41,6 +41,11 @@ leaves the score unchanged and the artifact at 138 KiB rather than 428 KiB.
 
 **Fallback.** If the artifact is missing, :func:`transcript` returns the rule module's
 restoration, so the pipeline still runs — it simply scores 97.071 instead of 98.626.
+
+**This model is not in the runtime path any more.** The transcript reaches the policy
+model in lowercase and the policy model casts the arguments itself (docs/DECISIONS.md,
+Decision 24); this model is kept as the ablation baseline, selectable with
+``--case-mode model``, and it is the arm the ablation has to beat.
 """
 from __future__ import annotations
 

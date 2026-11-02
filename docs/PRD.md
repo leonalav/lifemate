@@ -99,7 +99,7 @@ rule traces to a numbered fact.
 ## 4. System architecture
 
 ```
-audio (+ history audio) ──▶ ASR (gipformer, CPU) ──▶ transcript (+ normalised numbers/dates)
+audio (+ history audio) ──▶ ASR (gipformer, CPU) ──▶ raw transcript (lowercase)
                                                             │
 context + installed schemas + history (text+calls+results) ─┴─▶ PromptBuilder
                                                             │
@@ -107,7 +107,7 @@ context + installed schemas + history (text+calls+results) ─┴─▶ PromptBu
                                                             │  one action per step: {"name","arguments"} | {"name":"finish"}
                                                             ▼
                         Guard (deterministic): installed? validate()? coerce types? ground x-ref?
-                        block duplicate reads? ──▶ session.call(name, args) ──▶ compacted observation ──▶ loop
+                        snap to observed spelling? ──▶ session.call(name, args) ──▶ observation ──▶ loop
                                                             │
                         stop: finish | after ask_missing_info | max_steps | time budget
                                                             ▼
@@ -125,10 +125,15 @@ context + installed schemas + history (text+calls+results) ─┴─▶ PromptBu
   A30 VRAM contention (ASR runs on CPU, LLM loads after).
 - Determinism: greedy decoding, fixed seed; transcribe once per audio path and cache by path
   (`TranscriptStore`) so re-runs are identical.
-- Post-processing (deterministic, tested): NFC normalisation, sentence-case recasing that preserves
-  numeric forms (`200.000` is not a sentence end), Vietnamese number-word → typed-number mapping,
-  money-unit expansion. Never fold diacritics on values that reach the model: the matcher is
+- Post-processing (deterministic, tested): NFC normalisation, Vietnamese number-word → typed-number
+  mapping, money-unit expansion. Never fold diacritics on values that reach the model: the matcher is
   diacritic-sensitive.
+- Capitalisation: the recogniser's uppercase output is **not** recased in the pipeline. The transcript
+  reaches the model in lowercase and the policy model casts the arguments itself, learning the case from
+  the gold arguments it is trained on (docs/DECISIONS.md, Decision 24). The recasing code is kept as the
+  ablation baseline (`--case-mode rules|model`). Two safety nets recover a lost capital: the guard snaps
+  a purely lowercase argument to a spelling the environment already showed, and an optional pretrained
+  truecaser contributes a casing hint to the prompt.
 
 ### 4.2 LLM policy — Qwen3.5-4B (+ LoRA), served by vLLM, one action per step
 
@@ -244,10 +249,12 @@ CLI (frozen):
 
 ```bash
 python -m lifemate train   --data-dir DIR --output-dir DIR --config configs/sft_qlora.yaml \
-                           --resume [PATH] --epochs N --batch-size N [--smoke]
+                           --resume [PATH] --epochs N --batch-size N [--smoke] \
+                           [--case-mode none|rules|model] [--transcripts FILE]
 python -m lifemate merge   --checkpoint DIR --output-dir DIR [--model-path BASE]
 python -m lifemate infer   --data-dir DIR --split NAME --checkpoint DIR --output-file FILE \
-                           [--limit N] [--time-budget-s 25] [--max-steps 8]
+                           [--limit N] [--time-budget-s 25] [--max-steps 8] \
+                           [--case-mode none|rules|model] [--case-hint] [--use-asr]
 python -m lifemate score   --split train --submission FILE [--ids-file FILE] [--report FILE]
 python -m lifemate validate --split NAME --submission FILE
 python -m lifemate transcribe --split NAME --data-dir DIR --out FILE
@@ -256,6 +263,9 @@ python -m lifemate transcribe --split NAME --data-dir DIR --out FILE
 - `train` saves a `last` checkpoint every epoch and a `best` checkpoint on leave-apps-out improvement;
   `--resume` restores model, optimiser, scheduler, and epoch. Checkpoints, logs, and inference
   outputs live on Drive (Colab) or the mounted volume (Docker); dataset and repo live on local disk.
+  `--transcripts` points at the raw ASR transcript cache, so the model is trained on the text it
+  meets at inference time; `--case-mode` selects the capitalisation policy that text reaches the
+  model in (`none` = lowercase, the policy model casts the arguments itself — see Decision 24).
 - `infer` auto-discovers the split directory under `--data-dir` (private test arrives as a new folder;
   never hardcode split names), loads the split's own `zaic_tools`, transcribes all user turns once,
   runs the agent loop, and writes UTF-8 JSONL with `{"id","tool_calls","state_hash"}` in manifest order.

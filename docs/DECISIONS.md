@@ -659,3 +659,86 @@ tokens. The model can also be wrong in a way the rules are not: it lowercases a 
 rules had right, which is why the deferral exists. And the public test is scored on
 names the training split never saw, so the +1.555 points is an estimate from
 cross-validation, not a guarantee.
+
+---
+
+## Decision 24 — The policy model casts the arguments; the recasing code leaves the pipeline
+
+**What was changed:** The transcript now reaches the policy model in **lowercase**, and the
+model is expected to write the capitalisation itself. The recasing that used to sit in the
+ASR path — the rule module (`capitalize.py`) and the context model over it (`case_model.py`)
+— is out of the runtime path. It is kept, because it is the baseline the ablation measures
+against, and `casing.py` selects between the two settings in one place:
+
+| mode | the transcript the model sees | who decides the case |
+|---|---|---|
+| `none` (default) | lowercase | the policy model |
+| `rules` | restored by the rule module | the rule module |
+| `model` | restored by the context model | the context model |
+
+Four things changed with it:
+
+- **The policy is applied where the text becomes model input** — `build_prompt`, for the
+  request *and* for every history turn — so the training prompt and the inference prompt
+  cannot disagree about it. Training used to show the *gold* transcript (correctly cased,
+  punctuated) while inference showed a *recased* ASR transcript; both are lowercase now.
+- **The SFT dataset uses the recogniser's output.** `TrainConfig.transcript_cache` points
+  at the JSONL the `transcribe` command writes; `transcript_source` (`gold` / `asr` /
+  `mix`) chooses it. The `transcript_source` key existed but was never wired — the trainer
+  always used the gold transcript, so the model was never trained on the text it meets at
+  inference time.
+- **A safety net in the guard**: an argument that is *entirely lowercase* and matches an
+  entity the environment already showed — in a tool result or in the conversation history —
+  is snapped to the observed spelling ("mai anh" → "Mai Anh"). The snap only changes case,
+  so it cannot break a fuzzy match, and it leaves an argument the model already capitalised
+  alone.
+- **A safety net in the prompt**: a small pretrained truecaser (`vinai/phobert-base`,
+  135M parameters) contributes a *hint* — a recased copy of the request, marked as
+  advisory. It is the fallback for names the model has never seen, and it is optional
+  everywhere: without the weights the pipeline runs without it.
+
+**Reason:** The recasing code can only settle a token whose spelling it has seen. The
+public test's contact names are largely unknown to the train-derived table — 531 of the
+578 capitalised names in the public test environment are outside it — so the context
+model's gain is a cross-validation estimate, not a guarantee, and its failures land on
+exactly the arguments that are compared with equality. The policy model is the one
+component that already sits in the loop, it is trained on the gold arguments (which are
+correctly cased), and it brings the pretrained knowledge of Vietnamese names that a
+vocabulary cannot. Training it on the recogniser's lowercase output paired with the
+cased gold arguments turns casing from a post-processing problem into a learned one.
+
+**This decision is a hypothesis until it is measured.** The ablation is
+`research/ablate_case_model_vs_sft.py`, three arms on the `train` split — A: the context
+model recases (the baseline), B: the model casts, C: B plus the truecaser hint — each a
+full train + infer + score cycle, scored on the exactly-compared capitalised arguments.
+It needs a GPU, so it runs on Colab:
+
+```
+python research/ablate_case_model_vs_sft.py --arm B \
+    --data-dir data/train+public_test \
+    --transcripts /content/drive/transcripts_train.jsonl \
+    --output-dir /content/drive/ablation
+python research/ablate_case_model_vs_sft.py --summarize --output-dir /content/drive/ablation
+```
+
+If arm B loses to arm A, the recasing code comes back and this decision is reverted.
+
+**Alternatives:**
+- *Keep the recasing and add the model on top.* Rejected: the two would fight. The case
+  model rewrites the transcript the policy model copies from, so the policy model would
+  never learn to cast an argument, and its output would be overwritten in any case.
+- *Feed the model the uppercase transcript.* Rejected: ALL CAPS tokenises poorly and
+  destroys the word-boundary information the model needs to recognise a name.
+- *A dedicated Vietnamese truecasing checkpoint.* None exists in a maintained
+  pretrained form, so the hint is built on PhoBERT with pseudo-log-likelihood scoring
+  instead of a fine-tuned checkpoint.
+- *Snap every argument to an observed spelling.* Rejected: it would rewrite wording the
+  model chose deliberately. The snap is limited to purely lowercase arguments, where the
+  only thing missing is the capital.
+
+**Tradeoff:** The pipeline now depends on the model getting the casing right, and the
+guard can only repair a case when the environment happens to show the entity. The
+transcripts are also less informative for the model: it can no longer copy the case from
+the text, it has to know it. The recasing code stays in the repository, so the old
+behaviour is one flag away (`--case-mode model`), and the truecaser costs 135M parameters
+and a forward pass per word — it stays optional until the ablation says it pays.

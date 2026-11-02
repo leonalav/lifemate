@@ -54,6 +54,11 @@ class Guard:
         }
         self.allowed = set(allowed_tools) if allowed_tools is not None else None
         self.observed_ids = set(observed_ids or ())
+        # The entity spellings observed in tool results and in the conversation
+        # history: {casefolded form: the spelling as observed}. A model that emits
+        # "mai anh" for an entity the environment calls "Mai Anh" is snapped to the
+        # observed spelling — the cheapest way to recover a lost capital.
+        self.observed_strings: dict[str, str] = {}
         # The sample's clock. Dates and times are resolved against it, never against
         # the wall clock of the machine running the agent.
         self.now = now
@@ -114,6 +119,32 @@ class Guard:
                     repaired = normalize_date_value(value, fmt, self.now, self.tz_offset)
             if repaired is not None and repaired != value:
                 out[key] = repaired
+                changed = True
+        return out, changed
+
+    # -- 3c. snap to observed spellings ----------------------------------------------------
+    def snap_to_observed(self, name: str, arguments: dict) -> tuple[dict, bool]:
+        """Restore the capitalisation of an argument the environment already showed.
+
+        The transcript is lowercase and the model may answer in lowercase too, while
+        the gold argument is "Mai Anh". Whenever the environment itself has shown the
+        entity — in a tool result or in the conversation history — the observed
+        spelling is authoritative, so the argument is snapped to it.
+
+        Only *purely lowercase* arguments are snapped: if the model committed to a
+        capitalisation, that decision is the model's and is left alone. The snap can
+        only change case, never the wording, so it cannot break a fuzzy match.
+        """
+        out = dict(arguments or {})
+        changed = False
+        for key, value in list(out.items()):
+            if not isinstance(value, str) or not value.strip():
+                continue
+            if any(char.isupper() for char in value):
+                continue
+            canonical = self.observed_strings.get(value.casefold())
+            if canonical and canonical != value:
+                out[key] = canonical
                 changed = True
         return out, changed
 
@@ -214,7 +245,8 @@ class Guard:
             return GuardResult(False, name, {}, error)
 
         cleaned, _, _ = self.check_argument_keys(name, arguments)
-        normalized, _ = self.normalize_values(name, cleaned)
+        snapped, _ = self.snap_to_observed(name, cleaned)
+        normalized, _ = self.normalize_values(name, snapped)
         coerced, _, _ = self.coerce_types(name, normalized)
         repaired = coerced != arguments
 
@@ -265,4 +297,34 @@ def collect_ids(value, into: set[str]) -> set[str]:
     elif isinstance(value, str):
         if value and len(value) <= 64 and " " not in value:
             into.add(nfc(value))
+    return into
+
+
+def collect_strings(value, into: dict[str, str]) -> dict[str, str]:
+    """Collect the entity spellings a tool result shows, keyed by their casefolded form.
+
+    Unlike :func:`collect_ids` this keeps the multi-word values — a contact's name is
+    "Mai Anh" — because those are what the snap-to-observed rule repairs. When the
+    same form appears in several spellings, the one carrying capitals wins: it is the
+    canonical spelling the environment uses, and the lowercased one is a plain word
+    that happens to look the same.
+    """
+    if isinstance(value, dict):
+        for item in value.values():
+            collect_strings(item, into)
+    elif isinstance(value, list):
+        for item in value:
+            collect_strings(item, into)
+    elif isinstance(value, str):
+        text = nfc(value).strip()
+        if not text or len(text) > 64:
+            return into
+        key = text.casefold()
+        current = into.get(key)
+        if current is None:
+            into[key] = text
+        elif any(char.isupper() for char in text) and not any(
+            char.isupper() for char in current
+        ):
+            into[key] = text
     return into

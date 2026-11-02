@@ -118,14 +118,30 @@ SPLIT = "public_test"
 MAX_STEPS = 8
 TIME_BUDGET_S = 25
 
+# --- capitalisation ---
+# The transcript reaches the model in this casing policy.
+#   "none"   lowercase — the shipped pipeline: the model casts the arguments itself
+#   "model"  the context model recases the transcript (the ablation baseline)
+#   "rules"  the rule module alone (the weaker ablation baseline)
+CASE_MODE = "none"
+
+# Whether a pretrained truecaser contributes a casing *hint* to the prompt. The
+# weights have to be present; the cell that downloads them is above.
+CASE_HINT = False
+
 # The ASR bundle (gipformer ONNX) is downloaded from Hugging Face on first use and
 # cached here, so a session reset does not re-download it.
 ASR_MODEL_DIR = "/content/drive/MyDrive/lifemate_runs/models/gipformer"
+
+# The raw ASR transcripts. They are the training distribution (the model is trained on
+# the recogniser's output) and the runtime's transcript cache.
+TRANSCRIPT_DIR = f"{OUTPUT_DIR}/transcripts"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(INFER_OUTPUT_DIR, exist_ok=True)
+os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 
 print("REPO_URL        :", REPO_URL)
 print("BRANCH          :", BRANCH)
@@ -135,6 +151,8 @@ print("RUN NAME        :", RUN_NAME)
 print("OUTPUT DIR      :", OUTPUT_DIR)
 print("EPOCHS/BATCH    :", EPOCHS, "/", BATCH_SIZE, "grad_acc", GRAD_ACC)
 print("SPLIT           :", SPLIT)
+print("CASE MODE       :", CASE_MODE, " hint:", CASE_HINT)
+print("TRANSCRIPTS     :", TRANSCRIPT_DIR)
 """)
 
 md("""
@@ -323,7 +341,61 @@ print(f"Total files under data root: {total}")
 """)
 
 md("""
-## 8. Smoke test
+## 8. Transcribe the splits
+
+The recogniser's output is the training distribution: the model is trained on the
+transcript the ASR produces, not on the reference transcript, so it learns to cope
+with the errors the recogniser actually makes.
+
+The cache holds the **raw** recogniser output. The capitalisation policy is applied
+where the text becomes model input, so one cache serves every policy — lowercase for
+the shipped pipeline, restored for the ablation arms.
+
+The gipformer ONNX bundle is downloaded on first use and cached on Drive.
+""")
+
+code("""
+import json
+
+from huggingface_hub import hf_hub_download
+
+ASR_REPO = "g-group-ai-lab/gipformer1.5-68M-rnnt"
+ASR_FILES = ("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt")
+
+if not os.path.exists(os.path.join(ASR_MODEL_DIR, "encoder.onnx")):
+    print("Downloading the gipformer bundle ->", ASR_MODEL_DIR)
+    os.makedirs(ASR_MODEL_DIR, exist_ok=True)
+    for name in ASR_FILES:
+        hf_hub_download(repo_id=ASR_REPO, filename=name, local_dir=ASR_MODEL_DIR)
+else:
+    print("ASR bundle already present:", ASR_MODEL_DIR)
+
+
+def transcribe_split(split_name):
+    out = os.path.join(TRANSCRIPT_DIR, f"transcripts_{split_name}.jsonl")
+    cmd = [
+        sys.executable, "-m", "lifemate", "transcribe",
+        "--split", split_name,
+        "--data-dir", data_root,
+        "--out", out,
+        "--asr-model-dir", ASR_MODEL_DIR,
+    ]
+    print(" ".join(cmd))
+    result = subprocess.run(cmd, cwd=REPO_DIR)
+    if result.returncode != 0:
+        raise RuntimeError(f"transcribe failed for {split_name} ({result.returncode})")
+    with open(out, encoding="utf-8") as fh:
+        rows = [json.loads(line) for line in fh if line.strip()]
+    print(f"  {split_name}: {len(rows)} utterances -> {out}")
+    return out
+
+
+TRAIN_TRANSCRIPTS = transcribe_split("train")
+TEST_TRANSCRIPTS = transcribe_split(SPLIT)
+""")
+
+md("""
+## 9. Smoke test
 
 Runs a few training steps on a small subset to verify the pipeline end to end before
 committing to a long run. Cheapest useful gate: if this cell fails, the long run will fail.
@@ -349,13 +421,18 @@ print("Smoke test passed.")
 """)
 
 md("""
-## 9. Train
+## 10. Train
 
 Runs from the local dataset and writes checkpoints and logs to Drive, so a Colab disconnect
 does not lose progress. `--resume` picks up from the last checkpoint if one exists.
 
 The run writes two checkpoints under `<OUTPUT_DIR>/checkpoints`: `last` (every epoch) and
 `best` (on improvement). `best` is what the inference cell uses.
+
+`--transcripts` points at the recogniser's output, so the model is trained on the text
+it will actually see at inference time. `--case-mode` selects the capitalisation policy
+that text reaches the model in; `none` (lowercase) is the shipped pipeline, where the
+model casts the arguments itself.
 """)
 
 code("""
@@ -367,6 +444,8 @@ train_cmd = [
     "--config", os.path.join(REPO_DIR, "configs/sft_qlora.yaml"),
     "--epochs", str(EPOCHS),
     "--batch-size", str(BATCH_SIZE),
+    "--case-mode", CASE_MODE,
+    "--transcripts", TRAIN_TRANSCRIPTS,
     "--resume",
 ]
 
@@ -384,7 +463,7 @@ print("Training finished.")
 """)
 
 md("""
-## 10. Monitoring
+## 11. Monitoring
 
 TensorBoard reads the log directory on Drive. If `WANDB_API_KEY` was loaded, the training run
 also reports to Weights & Biases.
@@ -397,7 +476,7 @@ code("""
 """)
 
 md("""
-## 11. Merge the adapter
+## 12. Merge the adapter
 
 vLLM serves a merged model, so the LoRA adapter is merged into the base weights and written
 to Drive. The merged model is what the final Docker image bakes in.
@@ -420,13 +499,17 @@ print("Merged model ->", MERGED_MODEL_DIR)
 """)
 
 md("""
-## 12. Inference
+## 13. Inference
 
 Runs the agent over the split using the checkpoint on Drive, writes the submission JSONL to
 Drive, and prints a sample row.
 
 `--checkpoint` points at the merged model directory from the previous cell; `--model-path`
 names the base model, because the LoRA adapter is already merged into it.
+
+`--case-mode` and `--case-hint` must match the training cell: the runtime and the
+dataset have to agree on the capitalisation policy. `--use-asr` forces the recogniser's
+transcript on a labelled split, which is what scoring on `train` needs.
 """)
 
 code("""
@@ -439,9 +522,18 @@ infer_cmd = [
     "--output-file", f"{INFER_OUTPUT_DIR}/submission.jsonl",
     "--max-steps", str(MAX_STEPS),
     "--time-budget-s", str(TIME_BUDGET_S),
-    "--transcript-cache", f"{INFER_OUTPUT_DIR}/transcripts.jsonl",
+    "--transcript-cache", os.path.join(TRANSCRIPT_DIR, f"transcripts_{SPLIT}.jsonl"),
     "--asr-model-dir", ASR_MODEL_DIR,
+    "--case-mode", CASE_MODE,
 ]
+
+if CASE_HINT:
+    infer_cmd.append("--case-hint")
+
+if SPLIT == "train":
+    # On a labelled split the reference transcript would otherwise be used, which is
+    # not the text the model was trained on.
+    infer_cmd.append("--use-asr")
 
 print(" ".join(infer_cmd))
 result = subprocess.run(infer_cmd, cwd=REPO_DIR)
@@ -463,7 +555,7 @@ if rows:
 """)
 
 md("""
-## 13. Validate the submission
+## 14. Validate the submission
 
 Checks what the organiser's scorer will trip on: every sample present exactly once, and
 every proposed call schema-valid against the split's catalog and the sample's installed apps.
@@ -483,7 +575,7 @@ print("validate exit code:", result.returncode)
 """)
 
 md("""
-## 14. Score the submission (labelled splits only)
+## 15. Score the submission (labelled splits only)
 
 Works on `train`, where gold labels exist. `public_test` has no labels, so it cannot be
 scored locally.
@@ -507,7 +599,71 @@ print("scorer exit code:", result.returncode)
 """)
 
 md("""
-## 15. Troubleshooting
+## 16. Ablation: who casts the arguments?
+
+The pipeline no longer restores the capitalisation the recogniser threw away: the
+transcript reaches the model in lowercase and the model casts the arguments itself.
+That is a hypothesis until it is measured.
+
+Three arms, each a full train + infer + score cycle on `train`:
+
+| Arm | Transcript | Who decides the case |
+|---|---|---|
+| A | recased by the context model | the context model (the shipped baseline) |
+| B | lowercase | the policy model |
+| C | lowercase + a truecaser hint | the policy model, with a hint |
+
+Each arm is a separate invocation, so a lost session does not lose the other arms.
+Run one arm per cell execution; `--limit` gives a quick signal on a subset.
+
+The report counts the **exactly-compared capitalised arguments** — the arguments the
+scorer compares with equality and whose gold value carries a capital — split into
+`exact`, `case_only` (the right words, the wrong case) and `other`.
+""")
+
+code("""
+ABLATION_DIR = f"{OUTPUT_DIR}/ablation"
+ABLATION_ARM = "B"          # "A" (baseline), "B" (the model casts) or "C" (B + hint)
+ABLATION_LIMIT = None       # e.g. 300 for a quick signal on a subset
+ABLATION_EPOCHS = EPOCHS
+
+os.makedirs(ABLATION_DIR, exist_ok=True)
+
+ablation_cmd = [
+    sys.executable, os.path.join(REPO_DIR, "research/ablate_case_model_vs_sft.py"),
+    "--arm", ABLATION_ARM,
+    "--data-dir", data_root,
+    "--split", "train",
+    "--output-dir", ABLATION_DIR,
+    "--config", os.path.join(REPO_DIR, "configs/sft_qlora.yaml"),
+    "--transcripts", TRAIN_TRANSCRIPTS,
+    "--epochs", str(ABLATION_EPOCHS),
+]
+
+if ABLATION_LIMIT:
+    ablation_cmd += ["--limit", str(ABLATION_LIMIT)]
+
+print(" ".join(ablation_cmd))
+result = subprocess.run(ablation_cmd, cwd=REPO_DIR)
+if result.returncode != 0:
+    raise RuntimeError(f"ablation arm {ABLATION_ARM} failed ({result.returncode})")
+print(f"arm {ABLATION_ARM} finished -> {ABLATION_DIR}")
+""")
+
+code("""
+summarize_cmd = [
+    sys.executable, os.path.join(REPO_DIR, "research/ablate_case_model_vs_sft.py"),
+    "--summarize",
+    "--output-dir", ABLATION_DIR,
+]
+
+print(" ".join(summarize_cmd))
+result = subprocess.run(summarize_cmd, cwd=REPO_DIR)
+print("summarize exit code:", result.returncode)
+""")
+
+md("""
+## 17. Troubleshooting
 
 **Out of memory**
 Lower `BATCH_SIZE` to 1 and raise `GRAD_ACC` to compensate, or lower `MAX_SEQ_LEN` to 4096.

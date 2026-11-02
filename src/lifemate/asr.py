@@ -8,7 +8,9 @@ and it runs on CPU so it never contends with the LLM for VRAM
 Fine-tuning the ASR is a stretch goal gated behind a diagnostic, not the default.
 
 Transcription is cached by audio path so re-runs are identical and a resumed run does not
-re-transcribe what it already has.
+re-transcribe what it already has. The cached text is the **raw** recogniser output: the
+capitalisation policy lives in ``casing.py`` and is applied where the text becomes model
+input (Decision 24).
 """
 from __future__ import annotations
 
@@ -65,27 +67,23 @@ class Recognizer:
         return target
 
     def transcribe(self, wav_path: str | Path) -> str:
-        """Transcribe one 16 kHz mono wav file, restoring its capitalisation.
+        """Transcribe one 16 kHz mono wav file.
 
-        gipformer emits uppercase text with no punctuation; the restoration is what
-        makes a copied free-text argument match the gold value
-        (docs/DECISIONS.md, Decisions 6 and 23; src/lifemate/capitalize.py and
-        src/lifemate/case_model.py for the measurements).
+        gipformer emits uppercase text with no punctuation. The pipeline keeps that
+        raw form: the casing policy in ``casing.py`` is applied where the text
+        becomes model input, not here, so one cached transcript serves every policy
+        (lowercase for the shipped pipeline, restored for the ablation arms).
 
-        The restoration is two stages. The rule module fixes the shape of each token —
-        internal capitals, digits, punctuation — and the context model then decides
-        whether the token's first character is uppercase, which is the decision a
-        vocabulary cannot make ("Minh" the contact against "minh" the pronoun).
+        The recasing that used to live here — the rule module and the context model
+        over it — is the ablation baseline, not the runtime path (Decision 24).
         """
         import sherpa_onnx
-
-        from .case_model import transcript
 
         audio = sherpa_onnx.read_wave(str(wav_path))
         stream = self._recognizer.create_stream()
         stream.accept_waveform(audio.samples, audio.sample_rate)
         self._recognizer.decode_stream(stream)
-        return transcript(stream.result.text)
+        return stream.result.text
 
 
 class TranscriptStore:
@@ -93,11 +91,18 @@ class TranscriptStore:
 
     A resumed run reuses everything already transcribed, which keeps a re-run cheap and
     guarantees the model sees the same text it saw before.
+
+    Keys are **split-relative** when a root is given, so the same cache file serves
+    training and inference: the trainer looks a transcript up by the sample's
+    ``audio`` field, the runtime by the path it resolves from the split, and both
+    land on the same key.
     """
 
-    def __init__(self, path: str | Path | None = None, recognizer: Recognizer | None = None):
+    def __init__(self, path: str | Path | None = None, recognizer: Recognizer | None = None,
+                 root: str | Path | None = None):
         self.path = Path(path) if path else None
         self.recognizer = recognizer
+        self.root = Path(root).resolve() if root else None
         self.cache: dict[str, str] = {}
         if self.path and self.path.is_file():
             with self.path.open(encoding="utf-8") as fh:
@@ -107,8 +112,18 @@ class TranscriptStore:
                     record = json.loads(line)
                     self.cache[record["path"]] = record["text"]
 
+    def key_for(self, wav_path: str | Path) -> str:
+        """The cache key of an audio path: split-relative when that is possible."""
+        path = Path(wav_path)
+        if self.root is not None:
+            try:
+                return path.resolve().relative_to(self.root).as_posix()
+            except ValueError:
+                pass
+        return path.as_posix()
+
     def get(self, wav_path: str | Path) -> str:
-        key = str(wav_path)
+        key = self.key_for(wav_path)
         if key in self.cache:
             return self.cache[key]
         if self.recognizer is None:

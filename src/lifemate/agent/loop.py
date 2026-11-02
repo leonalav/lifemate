@@ -21,7 +21,7 @@ from datetime import datetime
 
 from ..data import Split
 from ..kit import tool_env
-from .guard import Guard, collect_ids
+from .guard import Guard, collect_ids, collect_strings
 from .policy import Action, Policy
 from .prompt import build_action_schema, build_prompt
 
@@ -92,12 +92,17 @@ class Agent:
     """Runs one sample through the policy, the guard and the environment."""
 
     def __init__(self, split: Split, policy: Policy, max_steps: int = 8,
-                 time_budget_s: float = 25.0, transcript_fn=None):
+                 time_budget_s: float = 25.0, transcript_fn=None, case_fn=None,
+                 case_mode: str | None = None):
         self.split = split
         self.policy = policy
         self.max_steps = max_steps
         self.time_budget_s = time_budget_s
         self.transcript_fn = transcript_fn
+        # An optional truecaser: it contributes a casing *hint* to the prompt, and
+        # nothing else. None when the weights are not in the image.
+        self.case_fn = case_fn
+        self.case_mode = case_mode
 
     def run(self, sample: dict, transcript: str) -> Trajectory:
         """Run one sample and return its trajectory."""
@@ -116,13 +121,16 @@ class Agent:
         # only 964 appear in the *current* turn. A guard that ignored the history would
         # wrongly reject 254 samples — a fifth of the split.
         observed: set[str] = set()
+        observed_strings: dict[str, str] = {}
         for turn in sample.get("history") or []:
             for result in turn.get("tool_results") or []:
                 collect_ids(result, observed)
+                collect_strings(result, observed_strings)
 
         guard = Guard(self.split, allowed_tools=_installed(sample),
                       now=clock[0], tz_offset=clock[1])
         guard.observed_ids = observed
+        guard.observed_strings = observed_strings
 
         schema = build_action_schema(self.split, sample)
 
@@ -141,6 +149,8 @@ class Agent:
             prompt = build_prompt(
                 self.split, working, transcript,
                 transcript_for_history=self.transcript_fn,
+                case_mode=self.case_mode,
+                case_fn=self.case_fn,
             )
             action = self.policy.propose(prompt, schema, sample)
 
@@ -176,7 +186,9 @@ class Agent:
                 Step(step_index, action, True, None, result, checked.repaired)
             )
             collect_ids(result, observed)
+            collect_strings(result, observed_strings)
             guard.observed_ids = observed
+            guard.observed_strings = observed_strings
 
             # The observation goes back into the prompt, so the next step sees it.
             working["history"] = working["history"] + [{
