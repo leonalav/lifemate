@@ -13,12 +13,15 @@
 # installs these reports whether a core package (e.g. numpy) changed and, if so, asks
 # for a runtime restart.
 
+# --- core ---
+numpy>=1.24
+pyyaml>=6.0
+
 # --- inference server ---
 vllm>=0.6.0
 
 # --- speech recognition (gipformer ONNX, CPU) ---
 sherpa-onnx>=1.10.0
-numpy>=1.24
 
 # --- training ---
 transformers>=4.45.0

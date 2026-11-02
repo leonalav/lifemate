@@ -245,9 +245,11 @@ CLI (frozen):
 ```bash
 python -m lifemate train   --data-dir DIR --output-dir DIR --config configs/sft_qlora.yaml \
                            --resume [PATH] --epochs N --batch-size N [--smoke]
+python -m lifemate merge   --checkpoint DIR --output-dir DIR [--model-path BASE]
 python -m lifemate infer   --data-dir DIR --split NAME --checkpoint DIR --output-file FILE \
                            [--limit N] [--time-budget-s 25] [--max-steps 8]
 python -m lifemate score   --split train --submission FILE [--ids-file FILE] [--report FILE]
+python -m lifemate validate --split NAME --submission FILE
 python -m lifemate transcribe --split NAME --data-dir DIR --out FILE
 ```
 
@@ -257,6 +259,10 @@ python -m lifemate transcribe --split NAME --data-dir DIR --out FILE
 - `infer` auto-discovers the split directory under `--data-dir` (private test arrives as a new folder;
   never hardcode split names), loads the split's own `zaic_tools`, transcribes all user turns once,
   runs the agent loop, and writes UTF-8 JSONL with `{"id","tool_calls","state_hash"}` in manifest order.
+- `merge` merges the LoRA adapter into the base model, because vLLM serves a merged model and the
+  Docker image bakes the result in.
+- `validate` is a pre-flight check: every sample present exactly once, every proposed call
+  schema-valid against the split's catalog and the sample's installed apps.
 - Docker `entrypoint.sh` calls `infer --data-dir /data --checkpoint /models/final
   --output-file /app/result/submission.jsonl` with `--network none`; model files are baked into the
   image (no downloads at runtime).

@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lifemate"
+version = "0.1.0"
+description = "Offline voice-to-action agent for the Zalo AI Challenge 2026 LifeMate track"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+# Runtime dependencies live in requirements.txt so the Colab launcher can install
+# them with `pip install -q -r requirements.txt`. torch is intentionally absent:
+# Colab ships a working CUDA build and reinstalling it is slow and error-prone.
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+train = [
+    "transformers>=4.45.0",
+    "peft>=0.12.0",
+    "trl>=0.9.0",
+    "datasets>=2.20.0",
+    "accelerate>=0.33.0",
+    "bitsandbytes>=0.43.0",
+]
+serve = [
+    "vllm>=0.6.0",
+]
+asr = [
+    "sherpa-onnx>=1.10.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "nbformat>=5.10.0",
+]
+
+[project.scripts]
+lifemate = "lifemate.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: exercises the full train split; needs the competition kit",
+]

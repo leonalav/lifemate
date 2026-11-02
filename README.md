@@ -16,7 +16,30 @@ the user asked for, under the competition's official metric.
 | Build plan | [`docs/PRD.md`](docs/PRD.md) (technical) · [`docs/PRD_NONTECHNICAL_VI.md`](docs/PRD_NONTECHNICAL_VI.md) (Vietnamese, non-technical) |
 | Verified facts | [`docs/VERIFIED_FACTS.md`](docs/VERIFIED_FACTS.md) |
 | Design decisions | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
-| Implementation | Begins after plan approval — Docker freeze **16 Nov 2026, 23:59 GMT+7** |
+| Implementation | **Pipeline implemented and verified on CPU.** Model training and inference run on Colab GPUs — never locally. Docker freeze **16 Nov 2026, 23:59 GMT+7** |
+
+## What is implemented
+
+The CLI contract frozen in [`docs/PRD.md`](docs/PRD.md) §6:
+
+```bash
+python -m lifemate train      --data-dir DIR --output-dir DIR --config FILE [--resume] [--smoke]
+python -m lifemate merge      --checkpoint DIR --output-dir DIR
+python -m lifemate infer      --data-dir DIR --split NAME --checkpoint DIR --output-file FILE
+python -m lifemate score      --split train --submission FILE [--report FILE]
+python -m lifemate validate   --split NAME --submission FILE
+python -m lifemate transcribe --split NAME --data-dir DIR --out FILE
+```
+
+Everything except the model itself is CPU-verifiable locally:
+
+| Verified locally | Result |
+|---|---|
+| Metric fidelity (gold replay, full train split) | **100.00 / 100** |
+| Empty submission (out-of-scope rate) | **7.18 / 100** |
+| Agent loop replaying gold trajectories | **1.000000** — the pipeline is exact |
+| Submission validation (ids, order, schema) | passes on a full 1,545-row file |
+| Test suite | 44 tests, all passing |
 
 ## Running on Colab
 
@@ -31,6 +54,9 @@ Training and inference run on Colab GPUs — **no model training or inference ru
 5. Run the cells from the top. The clone cell updates the repo, the data cell skips if already prepared, and the
    training cell resumes from the last checkpoint if a run was interrupted.
 
+The notebook runs: GPU check → Drive mount → config → secrets → clone → install → dataset → **smoke test** →
+train → monitor → merge adapter → infer → validate → score.
+
 Checkpoints, logs and inference outputs are written to Drive under
 `MyDrive/lifemate_runs/<RUN_NAME>/`; the repository and the dataset stay on the session's local disk.
 
@@ -38,12 +64,31 @@ Checkpoints, logs and inference outputs are written to Drive under
 
 ```
 colab_launcher.ipynb      # Colab GPU launcher (training + inference)
-configs/                  # agent and SFT configuration
-src/lifemate/             # package: asr/, agent/, evaluation/, cli
+configs/                  # agent.yaml, sft_qlora.yaml
+src/lifemate/             # the package
+  ├── data.py             # split discovery (no split name is ever hardcoded)
+  ├── kit.py              # loading a split's own zaic_tools runtime
+  ├── metric.py           # the official metric, reimplemented
+  ├── text.py             # Vietnamese number/date normalisation
+  ├── agent/              # prompt builder, deterministic guard, policy, loop
+  ├── training_data.py    # next-action dataset construction
+  ├── train.py            # QLoRA with --resume, last/best checkpoints
+  ├── merge.py            # LoRA adapter -> merged model for vLLM
+  ├── infer.py            # inference and submission validation
+  ├── asr.py              # gipformer via sherpa-onnx
+  └── cli.py              # the command line
 scripts/                  # train / predict / serve drivers
 docker/                   # offline inference image for the final submission
+tests/                    # 44 CPU tests (no model required)
 docs/                     # PRD, verified facts, decision log
 research/                 # measurement scripts used to produce the cited numbers
+```
+
+## Running the tests
+
+```bash
+python -m pytest tests/ -q      # 44 tests; the slow ones need the competition kit
+python research/test_notebook.py # local tests for the Colab launcher logic
 ```
 
 ## Reproducing the research

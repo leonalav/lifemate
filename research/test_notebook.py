@@ -8,6 +8,7 @@ are correct.
 import json, os, shutil, sys, tempfile, zipfile, ast, textwrap
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.path.insert(0, os.path.join(os.getcwd(), "src"))
 
 NB = "colab_launcher.ipynb"
 nb = json.load(open(NB, encoding="utf-8"))
@@ -80,12 +81,14 @@ setup = setup.replace("import shutil, zipfile", "")
 def make_zip(path, layout):
     with zipfile.ZipFile(path, "w") as zf:
         if layout == "with_data_folder":
-            zf.writestr("data/train/train.jsonl", "{}\n")
-            zf.writestr("data/public_test/public_test.jsonl", "{}\n")
-            zf.writestr("__MACOSX/._data", "junk")
+            prefix = "data/"
         else:
-            zf.writestr("train/train.jsonl", "{}\n")
-            zf.writestr("public_test/public_test.jsonl", "{}\n")
+            prefix = ""
+        for split in ("train", "public_test"):
+            zf.writestr(f"{prefix}{split}/{split}.jsonl",
+                        json.dumps({"id": f"{split}_0001"}) + "\n")
+            zf.writestr(f"{prefix}{split}/{split}_tools_catalog.json", "{}")
+        zf.writestr("__MACOSX/._data", "junk")
 
 
 for layout in ("with_data_folder", "flat"):
@@ -97,7 +100,8 @@ for layout in ("with_data_folder", "flat"):
     local = os.path.join(tmp, "data_local")
 
     env = dict(os.environ, FAKE_DRIVE_ZIP=zip_path, FAKE_LOCAL_DIR=local)
-    g = {"os": os, "shutil": shutil, "zipfile": zipfile,
+    g = {"os": os, "sys": sys, "shutil": shutil, "zipfile": zipfile,
+         "REPO_DIR": os.getcwd(),
          "DRIVE_DATA_ZIP": zip_path, "LOCAL_DATA_DIR": local}
     exec(compile(setup, "<setup>", "exec"), g)
 
@@ -110,8 +114,15 @@ for layout in ("with_data_folder", "flat"):
     print(f"   [{layout}] resolved data root: {os.path.relpath(root, tmp)}")
     assert os.path.isdir(os.path.join(root, "train")), "train split not found under data root"
 
+    # the CLI must discover both splits from the resolved root
+    from lifemate.data import discover_splits
+
+    found = discover_splits(root)
+    assert set(found) == {"train", "public_test"}, found
+
     # idempotency: second run must skip AND resolve the same root
-    g2 = {"os": os, "shutil": shutil, "zipfile": zipfile,
+    g2 = {"os": os, "sys": sys, "shutil": shutil, "zipfile": zipfile,
+          "REPO_DIR": os.getcwd(),
           "DRIVE_DATA_ZIP": zip_path, "LOCAL_DATA_DIR": local}
     exec(compile(setup, "<setup>", "exec"), g2)
     root2 = open(marker, encoding="utf-8").read().strip()
@@ -139,7 +150,8 @@ shutil.rmtree(tmp)
 print("=" * 70)
 print("D. MISSING-ZIP ERROR PATH")
 setup_missing = setup.replace('if not os.path.exists(DRIVE_DATA_ZIP):', 'if True:')
-g = {"os": os, "shutil": shutil, "zipfile": zipfile,
+g = {"os": os, "sys": sys, "shutil": shutil, "zipfile": zipfile,
+     "REPO_DIR": os.getcwd(),
      "DRIVE_DATA_ZIP": "/nonexistent/data.zip",
      "LOCAL_DATA_DIR": tempfile.mkdtemp()}
 try:
@@ -165,6 +177,65 @@ for verb, args in sorted(nb_cmds):
 print("   verbs used in notebook:", sorted({v for v, _ in nb_cmds}))
 assert {v for v, _ in nb_cmds} <= {v for v, _ in prd_cmds}, "notebook uses a verb the PRD does not define"
 print("   notebook verbs are all defined in the PRD")
+
+print("=" * 70)
+print("F. EVERY FLAG THE NOTEBOOK PASSES IS ACCEPTED BY THE REAL CLI")
+sys.path.insert(0, "src")
+from lifemate.cli import build_parser
+
+parser = build_parser()
+
+# a type-correct value for each flag, so a wrong type is not mistaken for a wrong flag
+FLAG_VALUES = {
+    "--data-dir": "/content/data_local",
+    "--split": "train",
+    "--output-dir": "/content/drive/runs",
+    "--config": "/content/lifemate/configs/sft_qlora.yaml",
+    "--epochs": "1",
+    "--batch-size": "1",
+    "--checkpoint": "/content/drive/runs/checkpoints/best",
+    "--model-path": "/content/drive/runs/merged_model",
+    "--output-file": "/content/drive/submission.jsonl",
+    "--max-steps": "8",
+    "--time-budget-s": "25",
+    "--transcript-cache": "/content/drive/transcripts.jsonl",
+    "--asr-model-dir": "/content/drive/models/gipformer",
+    "--submission": "/content/drive/submission.jsonl",
+    "--report": "/content/drive/scores.jsonl",
+    "--out": "/content/drive/transcripts.jsonl",
+    "--ids-file": "/content/drive/ids.txt",
+}
+BOOLEAN_FLAGS = {"--smoke", "--no-asr", "--resume"}
+
+for src in code_cells:
+    for m in re.finditer(r'"lifemate",\s*"(\w+)",(.*?)\]', src, re.S):
+        verb = m.group(1)
+        body = m.group(2)
+        flags = re.findall(r'"(--[a-z0-9-]+)"', body)
+        argv = [verb]
+        for flag in flags:
+            argv.append(flag)
+            if flag not in BOOLEAN_FLAGS:
+                if flag not in FLAG_VALUES:
+                    raise AssertionError(f"the notebook uses {flag}, which the test does not know")
+                argv.append(FLAG_VALUES[flag])
+        try:
+            parser.parse_args(argv)
+        except SystemExit:
+            raise AssertionError(f"the CLI rejects flags {flags} for '{verb}'")
+        print(f"   ok: lifemate {verb} {' '.join(flags)}")
+
+print("=" * 70)
+print("G. THE PACKAGE IMPORTS AND THE CLI HELP WORKS")
+import subprocess
+for argv in (["train", "--help"], ["infer", "--help"], ["score", "--help"],
+             ["transcribe", "--help"], ["validate", "--help"], ["merge", "--help"]):
+    result = subprocess.run(
+        [sys.executable, "-m", "lifemate", *argv],
+        capture_output=True, text=True, env={**os.environ, "PYTHONPATH": "src"},
+    )
+    assert result.returncode == 0, f"{argv} failed: {result.stderr[-500:]}"
+    print(f"   ok: lifemate {' '.join(argv)}")
 
 print("=" * 70)
 print("ALL LOCAL NOTEBOOK TESTS PASSED")

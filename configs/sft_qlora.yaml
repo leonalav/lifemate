@@ -1,0 +1,54 @@
+# LifeMate — Phase A/B supervised fine-tuning configuration.
+#
+# Every key here is read by TrainConfig.from_yaml (src/lifemate/train.py); an unknown
+# key is an error, so the config and the code cannot drift apart silently.
+#
+# Parameter budget (docs/VERIFIED_FACTS.md §12.1):
+#   Qwen3.5-4B  = 4,659,865,088 params (including the unused vision tower)  < 5B LLM cap
+#   gipformer   =      68,625,511 params
+#   system total = 4.73B                                                  < 6B cap
+
+base_model: "Qwen/Qwen3.5-4B"
+output_dir: "runs/sft"
+
+# --- schedule ---
+num_train_epochs: 3
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 0.0002
+lr_scheduler_type: "cosine"
+warmup_ratio: 0.03
+weight_decay: 0.0
+logging_steps: 10
+save_total_limit: 3
+seed: 20261028
+
+# 16384 is the hard context cap (docs/VERIFIED_FACTS.md §1). 8192 leaves room for the
+# prompt (max measured 7.4k tokens) plus the completion inside the cap.
+max_seq_len: 8192
+
+# --- LoRA ---
+lora_r: 64
+lora_alpha: 128
+lora_dropout: 0.05
+
+# --- quantisation ---
+load_in_4bit: true
+bnb_4bit_quant_type: "nf4"
+bnb_4bit_compute_dtype: "bfloat16"
+bf16: true
+gradient_checkpointing: true
+
+# --- validation ---
+# The holdout apps stand in for the 11 public-test apps that never appear in train
+# (docs/VERIFIED_FACTS.md §12.9). This is the honest generalisation proxy.
+holdout_apps: 10
+holdout_seed: 20261028
+near_duplicate_similarity: 0.92
+
+# --- transcripts ---
+# "gold" uses the labelled transcript; "asr" uses the stock-gipformer output (the
+# test-time distribution); "mix" blends them. ASR-fine-tuned transcripts are never
+# used here: a fine-tuned ASR memorises train audio and hides the real error modes.
+transcript_source: "mix"
+asr_transcript_ratio: 0.5

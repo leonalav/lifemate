@@ -20,6 +20,14 @@ wandb/
 logs/
 *.log
 
+# --- local run artefacts (submissions, reports, transcripts) ---
+result/
+results/
+submissions/
+*.submission.jsonl
+scores.jsonl
+transcripts.jsonl
+
 # --- secrets ---
 .env
 .env.*
@@ -40,6 +48,9 @@ venv/
 .mypy_cache/
 .ruff_cache/
 .ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
 
 # --- editors / OS ---
 .vscode/

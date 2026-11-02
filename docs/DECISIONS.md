@@ -395,3 +395,267 @@ rather than filling them in.
 
 **Tradeoff:** An extra call round-trip per proposal. `validate()` is unjournalled, so it costs
 nothing against the metric — only latency.
+
+---
+
+## Decision 17 — The metric lives in the package, and the reference script is its test
+
+**What was changed:** `research/scorer.py` proved the metric; `src/lifemate/metric.py` now
+implements it as the shipped code, and `tests/test_metric.py` asserts that the packaged
+version reproduces the reference's two published numbers — gold replay `1.000000` on all
+1,545 train samples, and `7.18/100` for an empty submission.
+
+**Reason:** The scorer is the instrument every number in the PRD is quoted from. If the
+shipped code and the research script could drift, the PRD's numbers would describe a scorer
+the submission does not use. The research script also hardcoded the `train` split; the
+packaged version takes the split as an argument, which is what the private test needs.
+
+**Alternatives:**
+- *Ship the research script as the scorer.* It is proven, but it hardcodes paths and one
+  split, and it was never written to be a library.
+- *Trust the research script and write no test.* Then the number in the README is a claim
+  about a file, not about the code that runs.
+
+**Tradeoff:** The metric now exists twice — a research script and a package module. The test
+that compares them is the cost of that duplication, and it is worth paying: it fails loudly
+the moment either copy changes.
+
+---
+
+## Decision 18 — Each split's runtime is loaded under a unique module name
+
+**What was changed:** `src/lifemate/kit.py` imports `<split>/zaic_tools` under the name
+`zaic_tools__<split>` and caches it per split, instead of importing `zaic_tools` by its
+plain name.
+
+**Reason:** `train/zaic_tools/utils.py` and `public_test/zaic_tools/utils.py` define
+different `FREE_TEXT_KEYS` and `LIVE_APPS` sets, and those sets change the state hash
+(docs/VERIFIED_FACTS.md §12.6). A plain `import zaic_tools` binds the **first** split's
+runtime for the whole process, so the second split would be scored against the wrong hash —
+a silent, total-scoring failure. The scorer needs both splits in one process (replay the
+gold trajectory for the hash, replay the submission against the same split), so the
+collision is not hypothetical.
+
+**Alternatives:**
+- *One process per split.* Avoids the collision, but makes the scorer run the kit twice and
+  invites exactly the copy-paste mistake that causes it.
+- *Reimplement the hash.* Explicitly forbidden: the hash is split-specific by construction.
+
+**Tradeoff:** A dynamic import with a non-standard module name is less obvious than a plain
+import, and the package must be registered in `sys.modules` before execution or its own
+relative imports fail. Both are handled in one small module, and a test asserts the two
+splits load independently.
+
+---
+
+## Decision 19 — The agent loop is testable without a model
+
+**What was changed:** The policy is an interface (`Policy.propose`) with two implementations:
+`VllmPolicy` for inference and `ScriptedPolicy` for tests. The loop, the guard, the prompt
+builder and the submission writer are exercised end to end on CPU with a scripted policy.
+
+**Reason:** The pipeline is where most of the score is decided — the state gate, the argument
+key set, the id grounding. Those are testable without a GPU, and a pipeline that only works
+on a Colab GPU cannot be verified before the submission deadline. The scripted policy also
+gives the decisive check: replaying the gold trajectory through the **real** loop scores
+exactly `1.000000`, which isolates the pipeline from the model. The reference team measured
+the same thing (99.99 on train) and it is the only way to know whether a low score is the
+model's fault or ours.
+
+**Alternatives:**
+- *Test only the pieces.* Unit tests of the guard alone would not have caught the bug where
+  the loop overwrote the dispatch list with the session's call log.
+- *Run the real model on CPU.* Too slow, and it would need the weights locally.
+
+**Tradeoff:** The scripted policy is a second implementation of the interface that must be
+maintained. It is about twenty lines, and it buys a test suite that runs in under two
+minutes without a GPU.
+
+---
+
+## Decision 20 — The adapter is merged explicitly before inference
+
+**What was changed:** A separate `lifemate merge` step writes the merged model to disk, and
+the inference cell points at that directory. `--model-path` names the merged model, and the
+adapter's `adapter_config.json` is copied alongside it.
+
+**Reason:** vLLM serves a merged model. Passing the adapter directory to `--checkpoint`
+would load the *base* model — the adapter would be silently ignored, and the run would
+score as though no training had happened at all. The failure is silent, which is the worst
+kind: the submission would look plausible and be wrong.
+
+**Alternatives:**
+- *Merge inside `infer`.* Fewer steps, but every inference run would pay the merge cost,
+  and the merged weights would have nowhere to live on the constrained Colab disk.
+- *Serve the adapter with vLLM's LoRA support.* Possible, but it constrains the served
+  graph and adds a runtime dependency to the offline image.
+
+**Tradeoff:** One extra step in the notebook and an extra directory on Drive. In exchange,
+the inference path has no silent way to ignore the trained weights, and the Docker image
+bakes in exactly the model that was validated.
+
+---
+
+## Decision 21 — The grounding check seeds its ids from the conversation history
+
+**What was changed:** The guard's observed-id set is seeded from the **history** turns'
+`tool_results`, not only from the current turn's results.
+
+**Reason:** Measured on the train split, 1,277 of the 1,278 gold x-ref values appear in
+the conversation history, but only 964 appear in the *current* turn. The first version of
+the guard tracked only current-turn results, so it would have rejected a gold call in
+**254 of 1,545 samples** — a fifth of the split — for an id the model had legitimately
+seen two turns earlier. That failure is silent: the model would be told the id was
+unobserved and would answer "missing information", turning a correct call into a zero.
+
+This was found by measuring the gold trajectories rather than by reading the code, and it
+is pinned by `tests/test_pipeline.py::test_the_guard_grounds_ids_from_the_conversation_history`.
+
+**Alternatives:**
+- *Require an id to be observed in the current turn.* Strict, and wrong by 16% of the
+  split.
+- *Drop the grounding check entirely.* Measured cost: the guard is what stops a
+  hallucinated id. Dispatching a wrong id does **not** error out — `sms.send` with a
+  nonexistent `contact_id` returns `ok: true` and creates a message with a null phone
+  number, silently corrupting the state and killing the sample on the hash gate.
+
+**Tradeoff:** One gold sample in 1,545 (`train_1696`, whose gold uses a `chat_id` that does
+not exist in the environment, so the gold call is itself a no-op) is rejected by the
+guard. The full-split agent replay therefore scores **99.987** rather than 100.000. That
+is the deliberate price of not letting a hallucinated id corrupt the state, and it is a
+five-hundred-fold better trade than the 254-sample regression the strict variant caused.
+
+---
+
+## Decision 22 — Numbers and dates are repaired by the guard, targeted by declared type
+
+**What was changed:** The guard gained a `normalize_values` step that runs before schema
+validation. It repairs an argument **only when its declared type is numeric or
+date-shaped**:
+
+| Declared type | Repair |
+|---|---|
+| `integer` / `number` | spoken number → typed number: `bốn mươi phần trăm` → `40`, `hai triệu` → `2000000`, `2.000.000` → `2000000` |
+| `string` + `format: date` | `27/9`, `ngày mười bốn` → `2026-09-27` |
+| `string` + `format: date-time` | `2026-09-26 09:00` → `2026-09-26T09:00:00+07:00`; `chín giờ sáng mai` → the same |
+| `string` + `format: time` | `bảy giờ tối` → `19:00` |
+
+Free-text arguments are **never** touched: they are compared fuzzily (token-F1 > 0.6) and
+the user's own wording is what scores. Dates are resolved against the **sample's**
+`context.current_time`, never the wall clock, and the timezone offset is always the
+sample's own.
+
+**Reason:** Decision 15 said numbers and dates are resolved by code, but the code was
+never wired into the loop — only `nfc` and the relative-day table were. Measured
+consequences of leaving it out:
+
+- The environment validates `format` strictly (`validate.py`), so a spoken value is a
+  **schema error**: the call is rejected, the step is wasted, and the model has to try
+  again.
+- A date-time without the timezone offset is *accepted* but changes the **state hash**:
+  replaying `2026-09-26T09:00:00` instead of `2026-09-26T09:00:00+07:00` produced a
+  different hash on every sample checked (`train_0467`, `train_0471`, `train_0506`), so
+  the sample scores **0**. The offset is not decoration.
+
+Three properties were then measured on all 1,545 train samples
+(`research/measure_normalizer.py`):
+
+| Property | Result |
+|---|---|
+| Safety — gold arguments rewritten by the repair | **0 / 320 numeric, 0 / 117 date** |
+| Repair — injected spelling defects restored to the gold value | **356 / 356** |
+| Coverage — gold dates recoverable from the transcript by a self-contained phrase | **57 / 97** |
+
+The 40 dates the resolver does *not* reach are all genuinely contextual: 14 are
+anaphoric ("hôm đó", "hôm trước"), 17 have no date phrase in the utterance at all (the
+date lives in the conversation history or in a referenced object), and 9 are relative to
+another reference ("qua hạn sớm nhất một ngày"). Those belong to the model, and the
+prompt now says so.
+
+**Alternatives:**
+- *Normalise the transcript before the model sees it.* Rejected: the model must copy the
+  user's own words into free-text arguments, and rewriting "hai triệu" to "2000000" in
+  the transcript would corrupt those arguments (token-F1 → 0).
+- *Let the model do all of it.* Rejected: measured error costs (§12.3) — one perturbed
+  non-fuzzy argument costs 0.213 mean and kills 268/400 samples on the state gate.
+- *Normalise every argument regardless of type.* Rejected: it breaks the fuzzy free-text
+  match and rewrites gold values, which is exactly the failure the safety measurement
+  exists to prevent.
+
+**Tradeoff:** A deterministic component that must be tested against Vietnamese
+conventions. It is testable offline against the gold trajectories, which is the property
+that makes it safe to trust. Two conventions are assumed rather than measured, and are
+flagged as open: a day-of-month that has already passed rolls to the next month ("ngày 5"
+said on the 25th), and a bare weekday refers to the next occurrence (measured on 13 of 14
+gold cases; the exception is a past event, which is contextual).
+
+
+---
+
+## Decision 23 — Capitalisation is restored by a context model over the rules, not by more rules
+
+**What was changed:** A new module `src/lifemate/case_model.py` layers a small
+logistic-regression model on top of the rule module. It decides one thing per token —
+whether that token's first character is uppercase — using the two words either side, the
+rule module's own opinion, position in the sentence, and membership of the derived
+vocabulary. The rule module keeps ownership of everything structural: internal capitals,
+digits, punctuation, honorifics and product codes.
+
+Two smaller changes came out of the same measurement:
+
+- `capitalize.is_code()` recognises a product code whose letters the derived acronym set
+  knows ("VOV3" from "vov", "RON95" from "ron", "E5" from "e", "RV183" from "rv"). The
+  render path consults it, so a code keeps its caps instead of being lowercased.
+- The model defers to the rules on honorifics and codes, where the decision is structural
+  rather than contextual.
+
+**Reason:** Decision 6 deferred the capitalisation question to "a name-aware recasing
+pass" if the data turned out to have many non-fuzzy free-text fields. It does. Measured
+over the training split, replacing each capitalised argument with its lowercase form
+costs **9.258 points** — more than any single remaining source of loss.
+
+The errors that survive the rule module are overwhelmingly *ambiguous* tokens: a word the
+training transcripts spell in both cases ("Mai" the name against "mai" the month). A
+vocabulary cannot settle those — the same word is right and wrong depending on the
+sentence — but the neighbouring words can. All figures below are 5-fold cross-validated
+over the whole training split, scored through the same code path the pipeline uses:
+
+| Measurement | Rule module | With the context model |
+|---|---|---|
+| Metric score | 97.071 | **98.626** |
+| Exactly-compared capitalised arguments recovered | 59.0% | **81.0%** |
+| Arguments rescued / broken | — | 65 / 1 |
+
+Two ablations establish that the gain is real rather than memorisation:
+
+- **Removing the token's own identity** from the features still yields +0.789 points, so
+  the gain comes from the context rather than from remembering train words.
+- **Restricting to arguments whose words never appear capitalised in training** — the
+  case that matters, because the public test uses contact names train never saw
+  (531 of the 578 capitalised names in the public test environment are unknown to the
+  train-derived table) — the model still improves them, from 4.3% to 13.8%.
+
+**Alternatives:**
+- *A larger vocabulary.* Rejected on measurement: the derived table already knows 324
+  proper words, and the public test's names are largely outside it. A bigger vocabulary
+  built from the same transcripts does not reach them.
+- *A transformer or an embedding model over the sentence.* Rejected: the decision is
+  local and per-token, the model is linear, and the artifact is 138 KiB of weights
+  scored with dictionary lookups. There is no scikit-learn at inference time, and no
+  GPU either.
+- *Asking `is_acronym` in the render path.* Rejected on measurement: it accepts any
+  unknown short uppercase word, so "giúp" became "GIÚP" — 6,974 tokens broken against
+  13 fixed. The digit-bearing restriction broke none and fixed eleven.
+- *Letting the model decide honorifics.* Rejected on measurement: the rules capitalise
+  "Mẹ" only when a name follows it, which the model cannot reliably reproduce. All 17
+  arguments it broke were honorifics or codes. Deferring on both cut that to 1 and
+  raised the gain from 1.172 to 1.555 points.
+
+**Tradeoff:** The artifact is a trained artefact that has to be rebuilt when the training
+split changes, so `research/build_case_model.py` is the thing to run and
+`research/verify_case_model.py` checks that the exported weights reproduce the
+cross-validated score through the runtime path — currently 0 mismatches over 34,686
+tokens. The model can also be wrong in a way the rules are not: it lowercases a name the
+rules had right, which is why the deferral exists. And the public test is scored on
+names the training split never saw, so the +1.555 points is an estimate from
+cross-validation, not a guarantee.

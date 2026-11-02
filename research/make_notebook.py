@@ -118,6 +118,10 @@ SPLIT = "public_test"
 MAX_STEPS = 8
 TIME_BUDGET_S = 25
 
+# The ASR bundle (gipformer ONNX) is downloaded from Hugging Face on first use and
+# cached here, so a session reset does not re-download it.
+ASR_MODEL_DIR = "/content/drive/MyDrive/lifemate_runs/models/gipformer"
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -210,6 +214,16 @@ result = subprocess.run(
 )
 print("pip exit code:", result.returncode)
 
+# The package itself, in editable mode, so `python -m lifemate` resolves to this clone.
+# --no-deps: the dependencies are already handled above.
+install = subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "-e", REPO_DIR],
+    cwd=REPO_DIR,
+)
+print("package install exit code:", install.returncode)
+if install.returncode != 0:
+    raise RuntimeError("could not install the lifemate package")
+
 after = {}
 for pkg in ("numpy", "torch"):
     try:
@@ -224,6 +238,9 @@ if changed:
           f"Runtime > Restart session, then re-run from the top.")
 else:
     print("No core package changed — no restart needed.")
+
+import lifemate
+print("lifemate", lifemate.__version__, "from", lifemate.__file__)
 """)
 
 md("""
@@ -245,7 +262,11 @@ DATA_READY_MARKER = os.path.join(LOCAL_DATA_DIR, ".data_ready")
 
 
 def find_data_root(base):
-    \"\"\"Return the folder that actually holds the split data.\"\"\"
+    \"\"\"Return the folder that actually holds the split data.
+
+    The released kit nests the splits inside a bundle folder ('train+public_test');
+    the archive may also place them at the root. Both shapes are handled.
+    \"\"\"
     entries = [e for e in os.listdir(base)
                if not e.startswith("__MACOSX") and not e.startswith(".")]
     if len(entries) == 1 and os.path.isdir(os.path.join(base, entries[0])):
@@ -288,6 +309,15 @@ for entry in sorted(os.listdir(data_root)):
     path = os.path.join(data_root, entry)
     print("  ", entry, "(dir)" if os.path.isdir(path) else "(file)")
 
+# Show which splits the CLI will discover, so a wrong layout is visible immediately.
+sys.path.insert(0, os.path.join(REPO_DIR, "src"))
+from lifemate.data import discover_splits
+
+splits = discover_splits(data_root)
+for name, split in sorted(splits.items()):
+    print(f"  split '{name}': {split.samples_file.name} "
+          f"({len(split.ids())} samples)")
+
 total = sum(len(files) for _, _, files in os.walk(data_root))
 print(f"Total files under data root: {total}")
 """)
@@ -302,7 +332,8 @@ committing to a long run. Cheapest useful gate: if this cell fails, the long run
 code("""
 smoke_cmd = [
     sys.executable, "-m", "lifemate", "train",
-    "--data-dir", LOCAL_DATA_DIR,
+    "--data-dir", data_root,
+    "--split", "train",
     "--output-dir", f"{OUTPUT_DIR}/smoke",
     "--config", os.path.join(REPO_DIR, "configs/sft_qlora.yaml"),
     "--epochs", "1",
@@ -322,12 +353,16 @@ md("""
 
 Runs from the local dataset and writes checkpoints and logs to Drive, so a Colab disconnect
 does not lose progress. `--resume` picks up from the last checkpoint if one exists.
+
+The run writes two checkpoints under `<OUTPUT_DIR>/checkpoints`: `last` (every epoch) and
+`best` (on improvement). `best` is what the inference cell uses.
 """)
 
 code("""
 train_cmd = [
     sys.executable, "-m", "lifemate", "train",
-    "--data-dir", LOCAL_DATA_DIR,
+    "--data-dir", data_root,
+    "--split", "train",
     "--output-dir", OUTPUT_DIR,
     "--config", os.path.join(REPO_DIR, "configs/sft_qlora.yaml"),
     "--epochs", str(EPOCHS),
@@ -362,21 +397,50 @@ code("""
 """)
 
 md("""
-## 11. Inference
+## 11. Merge the adapter
+
+vLLM serves a merged model, so the LoRA adapter is merged into the base weights and written
+to Drive. The merged model is what the final Docker image bakes in.
+""")
+
+code("""
+MERGED_MODEL_DIR = f"{OUTPUT_DIR}/merged_model"
+
+merge_cmd = [
+    sys.executable, "-m", "lifemate", "merge",
+    "--checkpoint", f"{CHECKPOINT_DIR}/best",
+    "--output-dir", MERGED_MODEL_DIR,
+]
+
+print(" ".join(merge_cmd))
+result = subprocess.run(merge_cmd, cwd=REPO_DIR)
+if result.returncode != 0:
+    raise RuntimeError(f"Merge failed with exit code {result.returncode}")
+print("Merged model ->", MERGED_MODEL_DIR)
+""")
+
+md("""
+## 12. Inference
 
 Runs the agent over the split using the checkpoint on Drive, writes the submission JSONL to
 Drive, and prints a sample row.
+
+`--checkpoint` points at the merged model directory from the previous cell; `--model-path`
+names the base model, because the LoRA adapter is already merged into it.
 """)
 
 code("""
 infer_cmd = [
     sys.executable, "-m", "lifemate", "infer",
-    "--data-dir", LOCAL_DATA_DIR,
+    "--data-dir", data_root,
     "--split", SPLIT,
-    "--checkpoint", CHECKPOINT_DIR,
+    "--checkpoint", MERGED_MODEL_DIR,
+    "--model-path", MERGED_MODEL_DIR,
     "--output-file", f"{INFER_OUTPUT_DIR}/submission.jsonl",
     "--max-steps", str(MAX_STEPS),
     "--time-budget-s", str(TIME_BUDGET_S),
+    "--transcript-cache", f"{INFER_OUTPUT_DIR}/transcripts.jsonl",
+    "--asr-model-dir", ASR_MODEL_DIR,
 ]
 
 print(" ".join(infer_cmd))
@@ -399,7 +463,27 @@ if rows:
 """)
 
 md("""
-## 12. Score the submission (labelled splits only)
+## 13. Validate the submission
+
+Checks what the organiser's scorer will trip on: every sample present exactly once, and
+every proposed call schema-valid against the split's catalog and the sample's installed apps.
+""")
+
+code("""
+validate_cmd = [
+    sys.executable, "-m", "lifemate", "validate",
+    "--data-dir", data_root,
+    "--split", SPLIT,
+    "--submission", f"{INFER_OUTPUT_DIR}/submission.jsonl",
+]
+
+print(" ".join(validate_cmd))
+result = subprocess.run(validate_cmd, cwd=REPO_DIR)
+print("validate exit code:", result.returncode)
+""")
+
+md("""
+## 14. Score the submission (labelled splits only)
 
 Works on `train`, where gold labels exist. `public_test` has no labels, so it cannot be
 scored locally.
@@ -411,6 +495,7 @@ one (the out-of-scope rate) — use these two numbers to confirm the scorer is b
 code("""
 score_cmd = [
     sys.executable, "-m", "lifemate", "score",
+    "--data-dir", data_root,
     "--split", "train",
     "--submission", f"{INFER_OUTPUT_DIR}/submission.jsonl",
     "--report", f"{OUTPUT_DIR}/scores.jsonl",
@@ -422,7 +507,7 @@ print("scorer exit code:", result.returncode)
 """)
 
 md("""
-## 13. Troubleshooting
+## 15. Troubleshooting
 
 **Out of memory**
 Lower `BATCH_SIZE` to 1 and raise `GRAD_ACC` to compensate, or lower `MAX_SEQ_LEN` to 4096.

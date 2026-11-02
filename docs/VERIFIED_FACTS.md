@@ -303,6 +303,33 @@ before the compliance certificate (G07).
 Full public inference: 6,914.7 s for 634 samples = **10.91 s/sample** average, inside the 30 s cap with room. The
 `time_budget_s: 25.0` guard with `max_steps: 8` was sufficient.
 
+### Capitalisation: the cost of the uppercase ASR, measured
+
+gipformer emits uppercase text with no punctuation, so the transcript the model sees loses every capital letter —
+including the ones that decide whether an argument matches. Measured over the train split (1,434 samples, 5-fold
+cross-validated, scored through the pipeline's own code path):
+
+| Treatment | Metric score | Exactly-compared capitalised arguments recovered |
+|---|---:|---:|
+| every capitalised argument lowercased | 90.742 | 0% |
+| the rule module alone (`capitalize.py`) | 97.071 | 59.0% |
+| the rule module + the context model (`case_model.py`) | **98.626** | **81.0%** |
+
+So perfect capitalisation is worth **9.258 points** over lowercasing everything, and the context model recovers
+**1.555 points** of the 2.571 the rule module leaves behind. The residual error is concentrated in *ambiguous* tokens —
+words the training transcripts spell in both cases ("Mai" the name against "mai" the month). A vocabulary cannot settle
+those; the neighbouring words can.
+
+Two ablations establish that the gain is contextual rather than memorisation of the training words:
+
+- Removing the token's own identity from the features still yields **+0.789 points**.
+- Restricted to arguments whose words never appear capitalised in training — the case that matters, because **531 of
+  the 578 capitalised names in the public test environment are unknown to the train-derived table** — the model still
+  improves them, from 4.3% to 13.8%.
+
+A naive fix to the same problem was measured and rejected: asking `is_acronym` in the render path accepts any unknown
+short uppercase word, so "giúp" became "GIÚP" — 6,974 tokens broken against 13 fixed.
+
 ---
 
 ## 7. Model parameter facts (verified via Hugging Face API)

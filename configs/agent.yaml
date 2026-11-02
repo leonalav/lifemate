@@ -1,0 +1,32 @@
+# LifeMate — agent runtime configuration.
+#
+# The competition caps the whole system at 30 s per sample (docs/VERIFIED_FACTS.md §1).
+# A reference team measured 10.91 s/sample, so the internal budget leaves room for a
+# slower machine without ever approaching the cap.
+
+# The gold trajectory never exceeds 6 calls (docs/VERIFIED_FACTS.md §12.5), so 8 steps
+# covers 100% of it with margin.
+max_steps: 8
+
+# Hard per-sample wall clock. Exceeding it stops the sample rather than risking a
+# timeout, which the competition scores as 0.
+time_budget_s: 25.0
+
+# The context cap is fixed by the rules: 16384 tokens.
+max_model_len: 16384
+
+# Greedy decoding with a fixed seed: the competition requires deterministic decoding.
+temperature: 0.0
+top_p: 1.0
+seed: 20261028
+
+# The LLM as the agent's policy.
+base_model: "Qwen/Qwen3.5-4B"
+
+# The ASR: stock gipformer1.5-68M-rnnt via sherpa-onnx, on CPU.
+asr_model: "g-group-ai-lab/gipformer1.5-68M-rnnt"
+asr_num_threads: 4
+
+# vLLM server settings.
+gpu_memory_utilization: 0.85
+max_tokens: 512
