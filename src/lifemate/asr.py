@@ -22,6 +22,28 @@ MODEL_ID = "g-group-ai-lab/gipformer1.5-68M-rnnt"
 MODEL_FILES = ("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt")
 
 
+def _read_wave(wav_path: str | Path) -> tuple["object", int]:
+    """Load a mono 16-bit wav file as normalised float32 samples.
+
+    ``sherpa_onnx.read_wave`` does not exist in the installed package; the
+    official offline-decode example defines this helper locally with stdlib
+    ``wave`` (see ``python-api-examples/offline-decode-files.py``), so we do
+    the same. Returns ``(samples, sample_rate)``.
+    """
+    import wave
+
+    import numpy as np
+
+    with wave.open(str(wav_path), "rb") as fh:
+        if fh.getnchannels() != 1:
+            raise ValueError(f"{wav_path}: expected mono audio, got {fh.getnchannels()} channels")
+        if fh.getsampwidth() != 2:
+            raise ValueError(f"{wav_path}: expected 16-bit audio")
+        frames = fh.readframes(fh.getnframes())
+        samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        return samples, fh.getframerate()
+
+
 @dataclass
 class Transcript:
     """One transcription."""
@@ -76,11 +98,9 @@ class Recognizer:
         The recasing that used to live here — the rule module and the context model
         over it — is the ablation baseline, not the runtime path (Decision 24).
         """
-        import sherpa_onnx
-
-        audio = sherpa_onnx.read_wave(str(wav_path))
+        samples, sample_rate = _read_wave(wav_path)
         stream = self._recognizer.create_stream()
-        stream.accept_waveform(audio.sample_rate, audio.samples)
+        stream.accept_waveform(sample_rate, samples)
         self._recognizer.decode_stream(stream)
         return stream.result.text
 
