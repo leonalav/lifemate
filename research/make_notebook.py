@@ -257,8 +257,17 @@ if changed:
 else:
     print("No core package changed — no restart needed.")
 
+# NOTE: the clone directory itself is named `lifemate` (/content/lifemate), so with
+# /content on sys.path Python can resolve `import lifemate` to that directory as a
+# namespace package instead of the installed src/lifemate package. Putting src first
+# and dropping any cached shadow fixes the import without a restart.
+sys.path.insert(0, os.path.join(REPO_DIR, "src"))
+for _mod in [m for m in list(sys.modules) if m == "lifemate" or m.startswith("lifemate.")]:
+    del sys.modules[_mod]
+
 import lifemate
-print("lifemate", lifemate.__version__, "from", lifemate.__file__)
+print("lifemate", getattr(lifemate, "__version__", "unknown"),
+      "from", getattr(lifemate, "__file__", "(namespace)"))
 """)
 
 md("""
