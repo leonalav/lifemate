@@ -284,12 +284,23 @@ def build_model_and_trainer(config: TrainConfig, train_rows: list[dict],
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        config.base_model,
-        quantization_config=quant_config,
-        torch_dtype=torch.bfloat16 if config.bf16 else torch.float32,
-        device_map={"": 0},
-    )
+    model_kwargs: dict = {"device_map": {"": 0}}
+    want_dtype = torch.bfloat16 if config.bf16 else torch.float32
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            config.base_model,
+            quantization_config=quant_config,
+            dtype=want_dtype,
+            **model_kwargs,
+        )
+    except TypeError:
+        # transformers < 5.0 names the argument torch_dtype.
+        model = AutoModelForCausalLM.from_pretrained(
+            config.base_model,
+            quantization_config=quant_config,
+            torch_dtype=want_dtype,
+            **model_kwargs,
+        )
     if config.load_in_4bit:
         model = prepare_model_for_kbit_training(
             model, use_gradient_checkpointing=config.gradient_checkpointing
@@ -328,12 +339,14 @@ def build_model_and_trainer(config: TrainConfig, train_rows: list[dict],
     except Exception:
         pass
 
-    training_args = SFTConfig(
+    training_args = _make_sft_config(
+        SFTConfig,
         output_dir=str(output_dir),
         num_train_epochs=1,  # the caller loops per epoch to save last/best
         per_device_train_batch_size=config.per_device_train_batch_size,
         gradient_accumulation_steps=config.gradient_accumulation_steps,
         learning_rate=config.learning_rate,
+        max_seq_len=config.max_seq_len,
         max_length=config.max_seq_len,
         warmup_ratio=config.warmup_ratio,
         weight_decay=config.weight_decay,
@@ -347,15 +360,71 @@ def build_model_and_trainer(config: TrainConfig, train_rows: list[dict],
         report_to=[],
     )
 
-    trainer = SFTTrainer(
+    trainer = _make_sft_trainer(
+        SFTTrainer,
         model=model,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
+        tokenizer=tokenizer,
         args=training_args,
     )
 
     return trainer, tokenizer
+
+
+def _make_sft_config(cls, **wanted):
+    """Build the TRL config, tolerating field renames across TRL versions.
+
+    Colab installs whatever TRL the runtime resolves (``trl>=0.9.0``), and field
+    names moved over time (``max_seq_length`` -> ``max_length``, plus scheduler
+    fields that some releases do not expose on ``SFTConfig``). Passing an
+    unknown keyword raises ``TypeError`` before any training happens, which is
+    the smoke-test failure this guards against. Unknown keys are dropped with a
+    warning instead of crashing.
+    """
+    import inspect
+    import warnings
+
+    try:
+        sig_params = inspect.signature(cls.__init__).parameters
+        params = set(sig_params)
+    except (TypeError, ValueError):
+        return cls(**wanted)
+    # ``max_seq_len`` is our name; TRL used ``max_seq_length`` then ``max_length``.
+    if "max_length" not in params and "max_seq_length" in params:
+        wanted.setdefault("max_seq_length", wanted.pop("max_length", None))
+    wanted.pop("max_seq_len", None)
+    # Always filter to known params: even when the signature has **kwargs,
+    # unknown keys can still fail inside dataclass __post_init__ validation.
+    filtered = {k: v for k, v in wanted.items() if k in params}
+    dropped = sorted(set(wanted) - set(filtered))
+    if dropped:
+        warnings.warn(f"SFTConfig does not accept {dropped}; dropping them")
+        print(f"warning: SFTConfig dropped unsupported args: {dropped}", flush=True)
+    return cls(**filtered)
+
+
+def _make_sft_trainer(cls, **wanted):
+    """Build the TRL trainer across ``processing_class`` / ``tokenizer`` renames."""
+    import inspect
+    import warnings
+
+    try:
+        params = set(inspect.signature(cls.__init__).parameters)
+    except (TypeError, ValueError):
+        params = set()
+    if "processing_class" not in params and "tokenizer" in params:
+        if "processing_class" in wanted:
+            wanted.setdefault("tokenizer", wanted.pop("processing_class"))
+    elif "processing_class" in params:
+        wanted.pop("tokenizer", None)
+    filtered = {k: v for k, v in wanted.items() if not params or k in params}
+    dropped = sorted(set(wanted) - set(filtered))
+    if dropped:
+        warnings.warn(f"SFTTrainer does not accept {dropped}; dropping them")
+        print(f"warning: SFTTrainer dropped unsupported args: {dropped}", flush=True)
+    return cls(**filtered)
 
 
 def run_training(data_dir: str, output_dir: str, config_path: str | None = None,
