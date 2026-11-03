@@ -59,16 +59,54 @@ def _patch_peft_torchao_check() -> None:
 
     Belt and braces next to :func:`_neutralise_incompatible_torchao`: even if
     torchao remains importable, the merge path never needs it, so answer False
-    instead of raising on the version mismatch.
+    instead of raising on the version mismatch. Every already-imported module
+    holding a direct reference is patched too, since ``dispatch_torchao``
+    imports the probe by name.
     """
+    import sys as _sys
+
+    def _unavailable(*a, **k):
+        return False
+
     try:
         import peft.import_utils as _iu
-    except Exception:
-        return
-    try:
-        _iu.is_torchao_available = lambda *a, **k: False  # type: ignore[assignment]
+        try:
+            _iu.is_torchao_available = _unavailable  # type: ignore[assignment]
+        except Exception:
+            pass
     except Exception:
         pass
+    for _mod in list(_sys.modules.values()):
+        try:
+            if getattr(_mod, "is_torchao_available", None) is not None:
+                try:
+                    setattr(_mod, "is_torchao_available", _unavailable)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    # The dispatcher holds its own reference; patch it directly.
+    for _name in (
+        "peft.tuners.lora.torchao",
+        "peft.tuners.lora.model",
+        "peft.tuners.tuners_utils",
+    ):
+        try:
+            _m = _sys.modules.get(_name)
+            if _m is None:
+                import importlib as _il
+
+                try:
+                    _m = _il.import_module(_name)
+                except Exception:
+                    continue
+            if hasattr(_m, "is_torchao_available"):
+                try:
+                    setattr(_m, "is_torchao_available", _unavailable)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
 
 def merge_adapter(checkpoint: str | Path, output_dir: str | Path,
@@ -77,6 +115,9 @@ def merge_adapter(checkpoint: str | Path, output_dir: str | Path,
     import torch
 
     _neutralise_incompatible_torchao()
+    # Patch before PeftModel is imported so submodules binding the probe by
+    # name receive the safe version; patch again after for already-bound refs.
+    _patch_peft_torchao_check()
     from peft import PeftModel
     _patch_peft_torchao_check()
     from transformers import AutoModelForCausalLM, AutoTokenizer
