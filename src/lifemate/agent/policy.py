@@ -89,6 +89,12 @@ class VllmPolicy:
 
     Greedy decoding (temperature 0) with a fixed seed: the competition requires
     deterministic decoding, and the organisers re-run the image five times and average.
+
+    Constrained decoding follows whatever vLLM version is installed: newer versions
+    renamed ``GuidedDecodingParams`` to ``StructuredOutputsParams`` (removed in
+    v0.12) and accept it as ``structured_outputs=``; older ones accept it as
+    ``guided_decoding=`` or the raw schema as ``guided_json=``. The helper below
+    probes the installed API so the same code works on Colab and in Docker.
     """
 
     def __init__(self, model_path: str, max_model_len: int = 16384,
@@ -106,14 +112,79 @@ class VllmPolicy:
         self.max_model_len = max_model_len
 
     def propose(self, prompt: str, schema: dict, sample: dict) -> Action:
-        from vllm.sampling_params import GuidedDecodingParams, SamplingParams
-
-        params = SamplingParams(
-            temperature=0.0,
-            top_p=1.0,
-            seed=20261028,
-            max_tokens=512,
-            guided_decoding=GuidedDecodingParams(json=schema),
-        )
+        params = _make_sampling_params(schema)
         outputs = self.llm.generate([prompt], params)
         return parse_action(outputs[0].outputs[0].text)
+
+
+def _make_sampling_params(schema: dict):
+    """Build SamplingParams with JSON-constrained decoding on any vLLM API.
+
+    v0.12 removed ``GuidedDecodingParams`` in favour of ``StructuredOutputsParams``
+    (``structured_outputs=``); older versions take ``guided_decoding=`` or the raw
+    ``guided_json=`` schema. The installed signature is probed so Colab (new) and
+    the Docker image (pinned older) both work, instead of failing mid-run.
+    """
+    import inspect
+
+    from vllm.sampling_params import SamplingParams
+
+    base = {
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "seed": 20261028,
+        "max_tokens": 512,
+    }
+    try:
+        accepted = set(inspect.signature(SamplingParams).parameters)
+    except (TypeError, ValueError):
+        accepted = set()
+
+    def _try_kwargs(extra: dict):
+        try:
+            return SamplingParams(**base, **extra)
+        except TypeError:
+            return None
+
+    # New API first: StructuredOutputsParams(json=schema) as structured_outputs=.
+    try:
+        from vllm.sampling_params import StructuredOutputsParams
+    except ImportError:
+        StructuredOutputsParams = None  # type: ignore[assignment]
+    if StructuredOutputsParams is not None:
+        for key in ("structured_outputs", "guided_decoding"):
+            if not accepted or key in accepted:
+                try:
+                    structured = StructuredOutputsParams(json=schema)
+                except TypeError:
+                    continue
+                params = _try_kwargs({key: structured})
+                if params is not None:
+                    return params
+
+    # Old API: GuidedDecodingParams(json=schema) as guided_decoding=.
+    try:
+        from vllm.sampling_params import GuidedDecodingParams
+    except ImportError:
+        GuidedDecodingParams = None  # type: ignore[assignment]
+    if GuidedDecodingParams is not None and (not accepted or "guided_decoding" in accepted):
+        try:
+            guided = GuidedDecodingParams(json=schema)
+        except TypeError:
+            guided = None
+        if guided is not None:
+            params = _try_kwargs({"guided_decoding": guided})
+            if params is not None:
+                return params
+
+    # Oldest API: the raw schema as guided_json=.
+    if not accepted or "guided_json" in accepted:
+        params = _try_kwargs({"guided_json": schema})
+        if params is not None:
+            return params
+
+    raise TypeError(
+        "installed vLLM SamplingParams accepts none of "
+        "'structured_outputs' / 'guided_decoding' / 'guided_json'; "
+        f"signature parameters: {sorted(accepted) if accepted else 'unknown'}"
+    )
