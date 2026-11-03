@@ -81,6 +81,12 @@ def build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--use-asr", action="store_true",
                        help="use the ASR transcript even on a labelled split (the "
                             "ablation needs the test-time text, not the reference one)")
+    infer.add_argument("--gpu-memory-utilization", type=float, default=None,
+                       help="fraction of GPU memory vLLM may use (default 0.6; "
+                            "lower on smaller GPUs or after in-process training)")
+    infer.add_argument("--max-model-len", type=int, default=None,
+                       help="vLLM context length (default 16384; lower to save "
+                            "KV-cache memory)")
 
     # --- score -----------------------------------------------------------------------
     score = sub.add_parser("score", help="score a submission against the gold labels.")
@@ -164,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
 
         checkpoint = Path(args.checkpoint)
         model_path = args.model_path or _model_from_checkpoint(checkpoint)
-        policy = VllmPolicy(model_path)
+        gpu_util = args.gpu_memory_utilization if args.gpu_memory_utilization is not None else 0.6
+        model_len = args.max_model_len if args.max_model_len is not None else 16384
+        policy = VllmPolicy(model_path, max_model_len=model_len,
+                            gpu_memory_utilization=gpu_util)
         config = InferConfig(
             max_steps=args.max_steps,
             time_budget_s=args.time_budget_s,
@@ -177,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
             case_hint=args.case_hint,
             truecaser_model=args.truecaser_model or "",
             use_asr_transcripts=args.use_asr,
+            gpu_memory_utilization=gpu_util,
+            max_model_len=model_len,
         )
         report = run_inference(args.data_dir, args.split, policy,
                                args.output_file, config)

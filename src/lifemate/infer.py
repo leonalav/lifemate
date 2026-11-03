@@ -37,6 +37,10 @@ class InferConfig:
     # The casing policy the transcript reaches the model in. Empty means the active
     # one (lowercase by default). "rules" and "model" are the ablation baselines.
     case_mode: str = ""
+    # vLLM sizing: 0.6 fits a 4B model alongside leftover training memory on a
+    # 39 GiB card; lower it further on smaller GPUs via the CLI flags.
+    gpu_memory_utilization: float = 0.6
+    max_model_len: int = 16384
     # Whether a pretrained truecaser contributes a casing hint to the prompt.
     case_hint: bool = False
     # Which truecaser weights to use; empty means the default (PhoBERT).

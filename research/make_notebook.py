@@ -117,6 +117,8 @@ SEED = 20261028
 SPLIT = "public_test"
 MAX_STEPS = 8
 TIME_BUDGET_S = 25
+GPU_MEM_UTIL = 0.6
+MAX_MODEL_LEN = 16384
 
 # --- capitalisation ---
 # The transcript reaches the model in this casing policy.
@@ -550,6 +552,8 @@ infer_cmd = [
     "--transcript-cache", os.path.join(TRANSCRIPT_DIR, f"transcripts_{SPLIT}.jsonl"),
     "--asr-model-dir", ASR_MODEL_DIR,
     "--case-mode", CASE_MODE,
+    "--gpu-memory-utilization", str(GPU_MEM_UTIL),
+    "--max-model-len", str(MAX_MODEL_LEN),
 ]
 
 if CASE_HINT:
@@ -673,6 +677,8 @@ ablation_cmd = [
     "--config", os.path.join(REPO_DIR, "configs/sft_qlora.yaml"),
     "--transcripts", TRAIN_TRANSCRIPTS,
     "--epochs", str(ABLATION_EPOCHS),
+    "--gpu-memory-utilization", str(GPU_MEM_UTIL),
+    "--max-model-len", str(MAX_MODEL_LEN),
 ]
 
 if ABLATION_LIMIT:

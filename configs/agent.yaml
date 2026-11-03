@@ -28,5 +28,6 @@ asr_model: "g-group-ai-lab/gipformer1.5-68M-rnnt"
 asr_num_threads: 4
 
 # vLLM server settings.
-gpu_memory_utilization: 0.85
+gpu_memory_utilization: 0.6
 max_tokens: 512
+max_model_len: 16384

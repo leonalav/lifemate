@@ -208,7 +208,11 @@ def run_arm(args) -> dict:
     # 3. infer -------------------------------------------------------------------
     submission_file = arm_dir / f"submission_{args.split}.jsonl"
     print("--- inference ---", flush=True)
-    policy = VllmPolicy(str(merged))
+    from lifemate.agent.policy import release_cuda_memory
+    release_cuda_memory()
+    policy = VllmPolicy(str(merged),
+                        max_model_len=args.max_model_len,
+                        gpu_memory_utilization=args.gpu_memory_utilization)
     config = InferConfig(
         max_steps=args.max_steps,
         time_budget_s=args.time_budget_s,
@@ -219,6 +223,8 @@ def run_arm(args) -> dict:
         case_hint=arm["case_hint"],
         truecaser_model=args.truecaser_model,
         use_asr_transcripts=True,
+        gpu_memory_utilization=args.gpu_memory_utilization,
+        max_model_len=args.max_model_len,
     )
     run_inference(args.data_dir, args.split, policy, str(submission_file), config)
 
@@ -297,6 +303,11 @@ def main() -> int:
     parser.add_argument("--max-steps", type=int, default=8)
     parser.add_argument("--time-budget-s", type=float, default=25.0)
     parser.add_argument("--truecaser-model", default="")
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.6,
+                        help="fraction of GPU memory vLLM may use (lower on small GPUs "
+                             "or when inference shares the process with training)")
+    parser.add_argument("--max-model-len", type=int, default=16384,
+                        help="vLLM context length (lower to save KV-cache memory)")
     parser.add_argument("--skip-train", action="store_true",
                         help="reuse the checkpoints already in the arm's directory")
     args = parser.parse_args()

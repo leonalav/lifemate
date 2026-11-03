@@ -84,6 +84,31 @@ class ScriptedPolicy:
         return action
 
 
+def release_cuda_memory() -> None:
+    """Release training memory before inference in the same process.
+
+    The ablation runs train then inference in one process. Without this, CUDA
+    blocks held by the trainer are still reserved when vLLM starts, so its
+    startup probe sees ~26 GiB free instead of ~39 GiB and refuses the
+    requested utilization. Called at the end of training and before
+    vLLM starts.
+    """
+    try:
+        import gc
+
+        gc.collect()
+    except Exception:
+        pass
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except Exception:
+        pass
+
+
 class VllmPolicy:
     """vLLM-backed policy.
 
@@ -98,18 +123,43 @@ class VllmPolicy:
     """
 
     def __init__(self, model_path: str, max_model_len: int = 16384,
-                 gpu_memory_utilization: float = 0.85, seed: int = 20261028):
+                 gpu_memory_utilization: float = 0.6, seed: int = 20261028):
         from vllm import LLM  # imported lazily: vLLM is not installed on a CPU box
 
-        self.llm = LLM(
-            model=model_path,
-            max_model_len=max_model_len,
-            gpu_memory_utilization=gpu_memory_utilization,
-            seed=seed,
-            enforce_eager=False,
-            dtype="bfloat16",
-        )
+        # The ablation runs train then inference in one process, so free the
+        # trainer's CUDA blocks before vLLM's startup probe measures memory.
+        release_cuda_memory()
+
+        attempts = [gpu_memory_utilization]
+        for fallback in (0.55, 0.5, 0.45):
+            if fallback < gpu_memory_utilization:
+                attempts.append(fallback)
+        last_error: Exception | None = None
+        chosen: float | None = None
+        for utilization in attempts:
+            try:
+                self.llm = LLM(
+                    model=model_path,
+                    max_model_len=max_model_len,
+                    gpu_memory_utilization=utilization,
+                    seed=seed,
+                    enforce_eager=False,
+                    dtype="bfloat16",
+                )
+                chosen = utilization
+                break
+            except Exception as exc:  # noqa: BLE001 - vLLM wraps the OOM deeply
+                last_error = exc
+                message = str(exc)
+                if "Free memory" not in message and "Engine core" not in message:
+                    raise
+                print(f"vLLM init at utilization {utilization} failed; "
+                      f"releasing memory and retrying lower", flush=True)
+                release_cuda_memory()
+        else:
+            raise last_error  # type: ignore[misc]
         self.max_model_len = max_model_len
+        self.gpu_memory_utilization = chosen if chosen is not None else attempts[0]
 
     def propose(self, prompt: str, schema: dict, sample: dict) -> Action:
         params = _make_sampling_params(schema)

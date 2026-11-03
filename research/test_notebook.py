@@ -206,6 +206,8 @@ FLAG_VALUES = {
     "--ids-file": "/content/drive/ids.txt",
     "--case-mode": "none",
     "--transcripts": "/content/drive/transcripts.jsonl",
+    "--gpu-memory-utilization": "0.6",
+    "--max-model-len": "16384",
 }
 BOOLEAN_FLAGS = {"--smoke", "--no-asr", "--resume", "--case-hint", "--use-asr"}
 

@@ -557,4 +557,27 @@ def run_training(data_dir: str, output_dir: str, config_path: str | None = None,
 
     with (output_path / "train_state.json").open("w", encoding="utf-8") as fh:
         json.dump(asdict(state), fh, ensure_ascii=False, indent=2)
+    # Free the trainer and its model before the caller merges or runs inference
+    # in the same process. Without this, `trainer` still holds CUDA tensors and
+    # `empty_cache` alone cannot return the memory, so vLLM's startup probe sees
+    # ~26 GiB free instead of ~39 GiB and refuses the requested utilization.
+    try:
+        from .agent.policy import release_cuda_memory
+
+        model = getattr(trainer, "model", None)
+        try:
+            del trainer
+        except Exception:
+            pass
+        try:
+            del model
+        except Exception:
+            pass
+        try:
+            del tokenizer
+        except Exception:
+            pass
+        release_cuda_memory()
+    except Exception:
+        pass
     return asdict(state)
