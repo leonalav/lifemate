@@ -37,11 +37,19 @@ def merge_adapter(checkpoint: str | Path, output_dir: str | Path,
         raise ValueError("no base model to merge into")
 
     print(f"loading base model: {base}", flush=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        base,
-        torch_dtype=torch.bfloat16,
-        device_map="cpu",
-    )
+    try:
+        model = AutoModelForCausalLM.from_pretrained(
+            base,
+            dtype=torch.bfloat16,
+            device_map="cpu",
+        )
+    except TypeError:
+        # transformers < 5.0 names the argument torch_dtype.
+        model = AutoModelForCausalLM.from_pretrained(
+            base,
+            torch_dtype=torch.bfloat16,
+            device_map="cpu",
+        )
     print(f"applying adapter: {checkpoint}", flush=True)
     merged = PeftModel.from_pretrained(model, str(checkpoint))
     merged = merged.merge_and_unload()

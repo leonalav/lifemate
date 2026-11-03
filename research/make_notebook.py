@@ -509,9 +509,13 @@ merge_cmd = [
 ]
 
 print(" ".join(merge_cmd))
-result = subprocess.run(merge_cmd, cwd=REPO_DIR)
+result = subprocess.run(merge_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-4000:] if result.stdout else "(no stdout)")
 if result.returncode != 0:
+    print(result.stderr[-8000:] if result.stderr else "(no stderr)")
     raise RuntimeError(f"Merge failed with exit code {result.returncode}")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-2000:])
 print("Merged model ->", MERGED_MODEL_DIR)
 """)
 
