@@ -12,11 +12,73 @@ import shutil
 from pathlib import Path
 
 
+def _neutralise_incompatible_torchao() -> None:
+    """Hide an outdated torchao so PEFT does not trip over its version check.
+
+    Colab ships torchao 0.10.0, while the installed PEFT requires >= 0.16.0 and
+    raises ``ImportError`` (instead of reporting "unavailable") when it sees the
+    old one. The LoRA merge does not need torchao, so an outdated copy is hidden
+    behind an import blocker and PEFT falls back to its regular LoRA path.
+    """
+    import importlib.metadata as _md
+    import sys as _sys
+
+    try:
+        _ver = _md.version("torchao")
+    except Exception:
+        return
+    try:
+        _parts = tuple(int(p) for p in _ver.split("+")[0].split(".")[:3])
+    except Exception:
+        _parts = (0,)
+    while len(_parts) < 3:
+        _parts = _parts + (0,)
+    if _parts >= (0, 16, 0):
+        return
+    print(f"hiding incompatible torchao {_ver} (>=0.16.0 required by peft)",
+          flush=True)
+
+    class _BlockTorchao:
+        def find_module(self, name, path=None):  # legacy protocol
+            if name == "torchao" or name.startswith("torchao."):
+                return self
+            return None
+
+        def find_spec(self, name, path=None, target=None):  # modern protocol
+            if name == "torchao" or name.startswith("torchao."):
+                raise ImportError(f"torchao {_ver} blocked: incompatible with peft")
+            return None
+
+    _sys.meta_path.insert(0, _BlockTorchao())
+    for _mod in [m for m in list(_sys.modules) if m == "torchao" or m.startswith("torchao.")]:
+        del _sys.modules[_mod]
+
+
+def _patch_peft_torchao_check() -> None:
+    """Force PEFT's torchao probe to report "not available".
+
+    Belt and braces next to :func:`_neutralise_incompatible_torchao`: even if
+    torchao remains importable, the merge path never needs it, so answer False
+    instead of raising on the version mismatch.
+    """
+    try:
+        import peft.import_utils as _iu
+    except Exception:
+        return
+    try:
+        _iu.is_torchao_available = lambda *a, **k: False  # type: ignore[assignment]
+    except Exception:
+        pass
+
+
 def merge_adapter(checkpoint: str | Path, output_dir: str | Path,
                   model_path: str | None = None) -> Path:
     """Merge the adapter in ``checkpoint`` into its base model and write it to ``output_dir``."""
     import torch
+
+    _neutralise_incompatible_torchao()
     from peft import PeftModel
+    _patch_peft_torchao_check()
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     checkpoint = Path(checkpoint)
