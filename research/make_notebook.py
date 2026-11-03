@@ -473,9 +473,13 @@ env = dict(os.environ)
 env["WANDB_PROJECT"] = "lifemate"
 env["WANDB_NAME"] = RUN_NAME
 
-result = subprocess.run(train_cmd, cwd=REPO_DIR, env=env)
+result = subprocess.run(train_cmd, cwd=REPO_DIR, env=env, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
 if result.returncode != 0:
+    print(result.stderr[-12000:] if result.stderr else "(no stderr)")
     raise RuntimeError(f"Training failed with exit code {result.returncode}")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-2000:])
 print("Training finished.")
 """)
 
@@ -557,9 +561,13 @@ if SPLIT == "train":
     infer_cmd.append("--use-asr")
 
 print(" ".join(infer_cmd))
-result = subprocess.run(infer_cmd, cwd=REPO_DIR)
+result = subprocess.run(infer_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
 if result.returncode != 0:
+    print(result.stderr[-12000:] if result.stderr else "(no stderr)")
     raise RuntimeError(f"Inference failed with exit code {result.returncode}")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-2000:])
 
 submission_path = f"{INFER_OUTPUT_DIR}/submission.jsonl"
 print("Wrote", submission_path, os.path.getsize(submission_path), "bytes")
@@ -591,7 +599,10 @@ validate_cmd = [
 ]
 
 print(" ".join(validate_cmd))
-result = subprocess.run(validate_cmd, cwd=REPO_DIR)
+result = subprocess.run(validate_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-4000:])
 print("validate exit code:", result.returncode)
 """)
 
@@ -615,7 +626,10 @@ score_cmd = [
 ]
 
 print(" ".join(score_cmd))
-result = subprocess.run(score_cmd, cwd=REPO_DIR)
+result = subprocess.run(score_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-4000:])
 print("scorer exit code:", result.returncode)
 """)
 
@@ -665,9 +679,13 @@ if ABLATION_LIMIT:
     ablation_cmd += ["--limit", str(ABLATION_LIMIT)]
 
 print(" ".join(ablation_cmd))
-result = subprocess.run(ablation_cmd, cwd=REPO_DIR)
+result = subprocess.run(ablation_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
 if result.returncode != 0:
+    print(result.stderr[-12000:] if result.stderr else "(no stderr)")
     raise RuntimeError(f"ablation arm {ABLATION_ARM} failed ({result.returncode})")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-2000:])
 print(f"arm {ABLATION_ARM} finished -> {ABLATION_DIR}")
 """)
 
@@ -679,7 +697,10 @@ summarize_cmd = [
 ]
 
 print(" ".join(summarize_cmd))
-result = subprocess.run(summarize_cmd, cwd=REPO_DIR)
+result = subprocess.run(summarize_cmd, cwd=REPO_DIR, capture_output=True, text=True)
+print(result.stdout[-8000:] if result.stdout else "(no stdout)")
+if result.stderr:
+    print("(stderr tail:)", result.stderr[-4000:])
 print("summarize exit code:", result.returncode)
 """)
 
